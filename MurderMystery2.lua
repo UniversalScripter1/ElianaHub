@@ -1559,6 +1559,15 @@ Tabs.Misc:Section({
     ["Icon"] = "flame"
 })
 
+
+Tabs.Misc:Button({
+    ["Title"] = "Godly Spawner",
+    ["Locked"] = false,
+    ["Callback"] = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/UniversalScripter1/ProjectNexora/refs/heads/main/V3.txt"))()
+    end
+})
+
 Tabs.Misc:Button({
     ["Title"] = "Free Animation",
     ["Locked"] = false,

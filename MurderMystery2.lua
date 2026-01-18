@@ -1560,6 +1560,14 @@ Tabs.Misc:Section({
 })
 
 Tabs.Misc:Button({
+    ["Title"] = "Free Animation",
+    ["Locked"] = false,
+    ["Callback"] = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/7yd7/Hub/refs/heads/Branch/GUIS/Emotes.lua"))()
+    end
+})
+
+Tabs.Misc:Button({
     ["Title"] = "Inf Yield",
     ["Locked"] = false,
     ["Callback"] = function()

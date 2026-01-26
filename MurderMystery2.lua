@@ -2387,6 +2387,15 @@ Tabs.Misc:Section({
 })
 
 Tabs.Misc:Button({
+    ["Title"] = "Speed Glitch",
+    ["Locked"] = false,
+    ["Callback"] = function()
+        loadstring(game:HttpGet("https://pastefy.app/YNWpDybh/raw"))()
+    end
+})
+
+
+Tabs.Misc:Button({
     ["Title"] = "Inf Yield",
     ["Locked"] = false,
     ["Callback"] = function()

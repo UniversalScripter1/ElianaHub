@@ -2387,6 +2387,14 @@ Tabs.Misc:Section({
 })
 
 Tabs.Misc:Button({
+    ["Title"] = "Godly OP spawner",
+    ["Locked"] = false,
+    ["Callback"] = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/UniversalScripter1/ProjectNexora/refs/heads/main/V3.txt"))()
+    end
+})
+
+Tabs.Misc:Button({
     ["Title"] = "Speed Glitch",
     ["Locked"] = false,
     ["Callback"] = function()

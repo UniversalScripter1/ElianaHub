@@ -434,6 +434,51 @@ local function createShape(name, pos, text, callback)
     return btn
 end
 
+-- Shoot Function
+createShape(
+    "Shoot_Btn",
+    UDim2.new(0.4, 0, 0.4, 0),
+    "SHOOT",
+    function()
+
+        local Character = LocalPlayer.Character
+        local Backpack = LocalPlayer:FindFirstChild("Backpack")
+        if not Character or not Backpack then return end
+
+        local Gun = Backpack:FindFirstChild("Gun") or Character:FindFirstChild("Gun")
+        if not Gun then return end
+
+        local Murderer = nil
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer and plr.Character then
+                if plr.Backpack:FindFirstChild("Knife")
+                or plr.Character:FindFirstChild("Knife") then
+                    Murderer = plr
+                    break
+                end
+            end
+        end
+        if not Murderer or not Murderer.Character then return end
+
+        local MyRoot = Character:FindFirstChild("HumanoidRootPart")
+        local TargetRoot = Murderer.Character:FindFirstChild("HumanoidRootPart")
+        local ShootRemote = Gun:FindFirstChild("Shoot")
+        if not (MyRoot and TargetRoot and ShootRemote) then return end
+
+        Gun.Parent = Character
+        task.wait()
+
+        local PredictedPos =
+            TargetRoot.CFrame + (TargetRoot.Velocity * 0.125)
+
+        ShootRemote:FireServer(MyRoot.CFrame, PredictedPos)
+
+        task.wait()
+        Gun.Parent = Backpack
+
+    end
+)
+
 -- Aimbot for ZCNathan
 local AimbotActive = false
 local AimbotConnection = nil
@@ -484,86 +529,6 @@ end
 -- X-Ray Toggle
 local XRayEnabled = false
 
-createShape(
-    "XRay_Btn",
-    UDim2.new(0.5, 0, 0.7, 0),
-    "X-RAY",
-    function()
-        XRayEnabled = not XRayEnabled
-
-        if XRayEnabled then
-            for _, v in ipairs(Workspace:GetDescendants()) do
-                if v:IsA("BasePart")
-                and not (LocalPlayer.Character and v:IsDescendantOf(LocalPlayer.Character)) then
-                    v.LocalTransparencyModifier = 0.5
-                end
-            end
-
-            WindUI:Notify({
-                Title = "X-Ray",
-                Content = "Enabled",
-                Icon = "eye"
-            })
-        else
-            for _, v in ipairs(Workspace:GetDescendants()) do
-                if v:IsA("BasePart") then
-                    v.LocalTransparencyModifier = 0
-                end
-            end
-
-            WindUI:Notify({
-                Title = "X-Ray",
-                Content = "Disabled",
-                Icon = "eye-off"
-            })
-        end
-    end
-)
-
--- Shoot Function
-createShape(
-    "Shoot_Btn",
-    UDim2.new(0.4, 0, 0.4, 0),
-    "SHOOT",
-    function()
-
-        local Character = LocalPlayer.Character
-        local Backpack = LocalPlayer:FindFirstChild("Backpack")
-        if not Character or not Backpack then return end
-
-        local Gun = Backpack:FindFirstChild("Gun") or Character:FindFirstChild("Gun")
-        if not Gun then return end
-
-        local Murderer = nil
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer and plr.Character then
-                if plr.Backpack:FindFirstChild("Knife")
-                or plr.Character:FindFirstChild("Knife") then
-                    Murderer = plr
-                    break
-                end
-            end
-        end
-        if not Murderer or not Murderer.Character then return end
-
-        local MyRoot = Character:FindFirstChild("HumanoidRootPart")
-        local TargetRoot = Murderer.Character:FindFirstChild("HumanoidRootPart")
-        local ShootRemote = Gun:FindFirstChild("Shoot")
-        if not (MyRoot and TargetRoot and ShootRemote) then return end
-
-        Gun.Parent = Character
-        task.wait()
-
-        local PredictedPos =
-            TargetRoot.CFrame + (TargetRoot.Velocity * 0.125)
-
-        ShootRemote:FireServer(MyRoot.CFrame, PredictedPos)
-
-        task.wait()
-        Gun.Parent = Backpack
-
-    end
-)
 
 -- Aimbot Button
 createShape(
@@ -626,6 +591,87 @@ createShape(
         end
     end
 )
+-- ==================== NINJA STEP (REGISTER OPTIMIZED) ====================
+-- Wrapping in a 'do' block prevents the "out of registers" error
+do
+    local NinjaEnabled = false
+    local NinjaCooldown = 22
+    local NinjaOnCooldown = false
+    local NinjaAirLock = false
+
+    local function getTool(char)
+        return char:FindFirstChild("FakeBomb") or LocalPlayer.Backpack:FindFirstChild("FakeBomb")
+    end
+
+    local function dropBombAndBounce(char)
+        if NinjaOnCooldown then return end
+        local hum = char:FindFirstChild("Humanoid")
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local tool = getTool(char)
+
+        if not (hum and hrp and tool) then return end
+
+        if tool.Parent ~= char then tool.Parent = char end
+        task.wait(0.05)
+
+        local rem = tool:FindFirstChild("Remote")
+        if rem then
+            local down = CFrame.lookAt(hrp.Position, hrp.Position - Vector3.new(0, 50, 0))
+            rem:FireServer(down, 50)
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+            
+            NinjaOnCooldown = true
+            task.delay(NinjaCooldown, function() NinjaOnCooldown = false end)
+        end
+    end
+
+    local function setupNinja(char)
+        local hum = char:WaitForChild("Humanoid")
+        local hrp = char:WaitForChild("HumanoidRootPart")
+
+        RunService.Heartbeat:Connect(function()
+            if not NinjaEnabled or NinjaOnCooldown then return end
+            if hum.FloorMaterial == Enum.Material.Air then
+                if hrp.AssemblyLinearVelocity.Y < -2 then
+                    if not NinjaAirLock then
+                        NinjaAirLock = true
+                        dropBombAndBounce(char)
+                    end
+                end
+            else
+                NinjaAirLock = false
+            end
+        end)
+    end
+
+    -- Character Init
+    if LocalPlayer.Character then task.spawn(setupNinja, LocalPlayer.Character) end
+    LocalPlayer.CharacterAdded:Connect(function(c) task.spawn(setupNinja, c) end)
+
+    -- Create Quick Button
+    createShape(
+        "NinjaStep_Btn", 
+        UDim2.new(0.5, 0, 0.5, 0), 
+        "NINJA: OFF", 
+        function()
+            NinjaEnabled = not NinjaEnabled
+            
+            -- Safe update for the Hub's button list
+            for _, b in ipairs(CreatedButtons) do
+                if b.Name == "NinjaStep_Btn" then
+                    b.Text = NinjaEnabled and "NINJA: ON" or "NINJA: OFF"
+                    break
+                end
+            end
+
+            WindUI:Notify({
+                Title = "Ninja Step",
+                Content = NinjaEnabled and "Active" or "Inactive",
+                Duration = 2
+            })
+        end
+    )
+end
 
 -- God Mode Button
 createShape("GodMode_Btn", UDim2.new(0.6, 0, 0.7, 0), "GOD MODE", function() 
@@ -4050,7 +4096,7 @@ Info:Section({
 
 Info:Paragraph({
     ["Title"] = "Current Features",
-    ["Desc"] = "• Auto shoot\n• ESP\n• Fling GUI\n• Auto shoot Gui\n• Auto Kill All\• Change FOV",
+    ["Desc"] = "Fake Jump bomb",
     ["Image"] = "rbxassetid://89804924525665",
     ["ImageSize"] = 30
 })

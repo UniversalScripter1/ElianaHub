@@ -2572,180 +2572,420 @@ Tabs.Misc:Button({
 })
 
 --- =============ESP TAB==========================
+-- PASTE THIS BLOCK to replace the old ESP section
+-- The do...end wrapper fixes the "out of registers" error
 
 Tabs.ESP:Section({
     ["Title"] = "ESP",
     ["Icon"] = "package"
 })
 
-local Config = {
-    MasterEnabled = false,
-    ShowMurder = true,
-    ShowSheriff = true,
-    ShowInnocent = true,
-    ShowGun = true,
-    TracerThickness = 4.5,
-    TracerTransparency = 0.85,
-    BoxThickness = 1.8,
-    TextSize = 18,
-    Font = 2
-}
+do -- <<<< DO BLOCK: isolates all ESP locals from the top-level scope
 
-local Colors = {
-    ["Murder"] = Color3.fromRGB(255, 0, 0),
-    ["Sheriff"] = Color3.fromRGB(0, 150, 255),
-    ["Innocent"] = Color3.fromRGB(0, 255, 100),
-    ["DroppedGun"] = Color3.fromRGB(255, 255, 0)
-}
-
-local Visuals = {Players = {}, Guns = {}}
-
-local function DestroyDrawings(Data)
-    if not Data then return end
-    if Data.Tracer then Data.Tracer:Remove() end
-    if Data.Box then Data.Box:Remove() end
-    if Data.Text then Data.Text:Remove() end
-end
-
-local function GetRole(P)
-    local Char = P.Character
-    local BP = P:FindFirstChild("Backpack")
-    local function Scan(Loc)
-        if not Loc then return nil end
-        for _, i in ipairs(Loc:GetChildren()) do
-            if i:IsA("Tool") then
-                if i.Name:lower():find("knife") or i:FindFirstChild("Knife") then return "Murder" end
-                if i.Name:lower():find("gun") or i:FindFirstChild("Gun") then return "Sheriff" end
-            end
-        end
-    end
-    return Scan(Char) or Scan(BP) or "Innocent"
-end
-
-local function NewDraw(Obj, Group)
-    local D = {
-        Tracer = Drawing.new("Line"),
-        Box = Drawing.new("Square"),
-        Text = Drawing.new("Text")
+    local ESPConfig = {
+        MasterEnabled     = false,
+        ChamsTransparency = 0.5,
+        ShowLines         = false,
+        ShowTexts         = true,
+        ShowHighlight     = true,
+        ShowMurderer      = true,
+        ShowSheriff       = true,
+        ShowInnocent      = true,
+        ShowGun           = true,
     }
-    D.Tracer.Thickness = Config.TracerThickness
-    D.Tracer.Transparency = Config.TracerTransparency
-    
-    D.Box.Thickness = Config.BoxThickness
-    D.Box.Filled = false
-    D.Box.Transparency = 1
-    
-    D.Text.Size = Config.TextSize
-    D.Text.Center = true
-    D.Text.Outline = true
-    D.Text.Font = Config.Font
-    
-    Visuals[Group][Obj] = D
-    return D
-end
 
-local GunCache = {}
-local function UpdateGunCache()
-    table.clear(GunCache)
+    local ESPColors = {
+        Murder     = Color3.fromRGB(255, 0,   0),
+        Sheriff    = Color3.fromRGB(0,   150, 255),
+        Innocent   = Color3.fromRGB(0,   255, 100),
+        DroppedGun = Color3.fromRGB(255, 255, 0),
+    }
+
+    local ESP_PlayerESP = {}
+    local ESP_GunESP    = {}
+    local ESP_RoleCache = {}
+    local ESP_GunCache  = {}
+
+    -- Drawing pool
+    local ESP_Pool = {Box = {}, Text = {}, Line = {}}
+
+    local function ESP_Acquire(kind)
+        local pool = ESP_Pool[kind]
+        if #pool > 0 then
+            local d = table.remove(pool)
+            d.Visible = false
+            return d
+        end
+        local t = {Box = "Square", Text = "Text", Line = "Line"}
+        return Drawing.new(t[kind])
+    end
+
+    local function ESP_Release(kind, d)
+        if not d then return end
+        d.Visible = false
+        table.insert(ESP_Pool[kind], d)
+    end
+
+    local function ESP_RemoveHighlight(entry)
+        if entry and entry.Highlight then
+            pcall(function() entry.Highlight:Destroy() end)
+            entry.Highlight = nil
+        end
+    end
+
+    local function ESP_DestroyEntry(entry)
+        if not entry then return end
+        ESP_Release("Box",  entry.Box)
+        ESP_Release("Text", entry.Text)
+        ESP_Release("Line", entry.Tracer)
+        entry.Box = nil
+        entry.Text = nil
+        entry.Tracer = nil
+        ESP_RemoveHighlight(entry)
+    end
+
+    local function ESP_NewEntry()
+        local box = ESP_Acquire("Box")
+        box.Thickness = 1.8; box.Filled = false; box.Transparency = 1
+
+        local text = ESP_Acquire("Text")
+        text.Size = 18; text.Center = true; text.Outline = true; text.Font = 2
+
+        local tracer = ESP_Acquire("Line")
+        tracer.Thickness = 4.5; tracer.Transparency = 0.85
+
+        return {Box = box, Text = text, Tracer = tracer, Highlight = nil}
+    end
+
+    local function ESP_GetRole(player)
+        local Char = player.Character
+        local BP   = player:FindFirstChild("Backpack")
+        local function Scan(loc)
+            if not loc then return nil end
+            for _, item in ipairs(loc:GetChildren()) do
+                if item:IsA("Tool") then
+                    local n = item.Name:lower()
+                    if n:find("knife") or n:find("sword") or n:find("murder") or item:FindFirstChild("Knife") then return "Murder" end
+                    if n:find("gun") or n:find("revolver") or n:find("sheriff") or item:FindFirstChild("Gun") then return "Sheriff" end
+                end
+            end
+        end
+        return Scan(Char) or Scan(BP) or "Innocent"
+    end
+
+    local function ESP_IsAllowed(player)
+        local char = player.Character
+        if not char then return false end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum then return false end
+        return hum.NameDisplayDistance == 0
+    end
+
+    local function ESP_EnsurePlayerHL(player, entry, role, color)
+        if ESP_RoleCache[player] == role and entry.Highlight then
+            entry.Highlight.FillTransparency = ESPConfig.ChamsTransparency
+            return
+        end
+        ESP_RoleCache[player] = role
+        ESP_RemoveHighlight(entry)
+        local char = player.Character
+        if not char then return end
+        local h = Instance.new("Highlight")
+        h.FillColor = color; h.OutlineColor = color
+        h.FillTransparency = ESPConfig.ChamsTransparency
+        h.OutlineTransparency = 0.2
+        h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        h.Adornee = char; h.Parent = char
+        entry.Highlight = h
+    end
+
+    local function ESP_EnsureGunHL(gun, entry)
+        if entry.Highlight then
+            entry.Highlight.FillTransparency = ESPConfig.ChamsTransparency
+            return
+        end
+        local h = Instance.new("Highlight")
+        h.FillColor = ESPColors.DroppedGun; h.OutlineColor = ESPColors.DroppedGun
+        h.FillTransparency = ESPConfig.ChamsTransparency
+        h.OutlineTransparency = 0.2
+        h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        h.Adornee = gun; h.Parent = gun
+        entry.Highlight = h
+    end
+
+    local function ESP_UnregisterGun(part)
+        ESP_GunCache[part] = nil
+        if ESP_GunESP[part] then
+            ESP_DestroyEntry(ESP_GunESP[part])
+            ESP_GunESP[part] = nil
+        end
+    end
+
+    local function ESP_CleanupAll()
+        for _, e in pairs(ESP_PlayerESP) do ESP_DestroyEntry(e) end
+        for _, e in pairs(ESP_GunESP)    do ESP_DestroyEntry(e) end
+        table.clear(ESP_PlayerESP)
+        table.clear(ESP_GunESP)
+        table.clear(ESP_RoleCache)
+    end
+
+    -- Seed gun cache
     for _, v in ipairs(Workspace:GetDescendants()) do
-        if v.Name == "GunDrop" and v:IsA("BasePart") then table.insert(GunCache, v) end
+        if v.Name == "GunDrop" and v:IsA("BasePart") then ESP_GunCache[v] = true end
     end
-end
-Workspace.DescendantAdded:Connect(function(d) if d.Name == "GunDrop" then UpdateGunCache() end end)
-Workspace.DescendantRemoving:Connect(function(d) if d.Name == "GunDrop" then UpdateGunCache() end end)
-UpdateGunCache()
+    Workspace.DescendantAdded:Connect(function(d)
+        if d.Name == "GunDrop" and d:IsA("BasePart") then ESP_GunCache[d] = true end
+    end)
+    Workspace.DescendantRemoving:Connect(function(d)
+        if d.Name == "GunDrop" and d:IsA("BasePart") then ESP_UnregisterGun(d) end
+    end)
 
-local function MainUpdate()
-    if not Config.MasterEnabled then return end
-    local Mid = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-
-    for P, D in pairs(Visuals.Players) do
-        local Char = P.Character
-        local Root = Char and Char:FindFirstChild("HumanoidRootPart")
-        local Hum = Char and Char:FindFirstChild("Humanoid")
-
-        if not P or not P.Parent or not Char or not Root or not Hum or Hum.Health <= 0 then
-            DestroyDrawings(D)
-            Visuals.Players[P] = nil
-        else
-            local Role = GetRole(P)
-            local IsVisible = (Role == "Murder" and Config.ShowMurder) or 
-                              (Role == "Sheriff" and Config.ShowSheriff) or 
-                              (Role == "Innocent" and Config.ShowInnocent)
-
-            local ScreenPos, OnScreen = Camera:WorldToViewportPoint(Root.Position)
-            
-            if OnScreen and IsVisible then
-                local Color = Colors[Role]
-                
-                D.Box.Visible = true
-                D.Box.Color = Color
-                D.Box.Position = Vector2.new(ScreenPos.X - 15, ScreenPos.Y - 15)
-                D.Box.Size = Vector2.new(30, 30)
-                D.Box.Filled = false
-                
-                D.Text.Visible = true
-                D.Text.Text = "[ " .. Role:upper() .. " ]"
-                D.Text.Color = Color
-                D.Text.Position = Vector2.new(ScreenPos.X, ScreenPos.Y - 40)
-                
-                D.Tracer.Visible = true
-                D.Tracer.From = Mid
-                D.Tracer.To = Vector2.new(ScreenPos.X, ScreenPos.Y)
-                D.Tracer.Color = Color
-            else
-                D.Box.Visible = false; D.Text.Visible = false; D.Tracer.Visible = false
-            end
+    -- Player hooks
+    Players.PlayerRemoving:Connect(function(P)
+        if ESP_PlayerESP[P] then
+            ESP_DestroyEntry(ESP_PlayerESP[P])
+            ESP_PlayerESP[P] = nil
         end
-    end
-
-    for Gun, D in pairs(Visuals.Guns) do
-        if not Gun or not Gun.Parent or not Gun:IsDescendantOf(Workspace) then
-            DestroyDrawings(D)
-            Visuals.Guns[Gun] = nil
-        else
-            local Pos, OnScreen = Camera:WorldToViewportPoint(Gun.Position)
-            if OnScreen and Config.ShowGun then
-                D.Box.Visible = true; D.Box.Color = Colors.DroppedGun; D.Box.Filled = false
-                D.Box.Position = Vector2.new(Pos.X - 10, Pos.Y - 10); D.Box.Size = Vector2.new(20, 20)
-                D.Text.Visible = true; D.Text.Text = "[ GUN DROPPED ]"; D.Text.Color = Colors.DroppedGun
-                D.Text.Position = Vector2.new(Pos.X, Pos.Y - 30)
-                D.Tracer.Visible = true; D.Tracer.From = Mid; D.Tracer.To = Vector2.new(Pos.X, Pos.Y); D.Tracer.Color = Colors.DroppedGun
-            else
-                D.Box.Visible = false; D.Text.Visible = false; D.Tracer.Visible = false
-            end
-        end
-    end
-
+        ESP_RoleCache[P] = nil
+    end)
     for _, P in ipairs(Players:GetPlayers()) do
-        if P ~= LocalPlayer and not Visuals.Players[P] and P.Character and P.Character:FindFirstChild("HumanoidRootPart") then
-            NewDraw(P, "Players")
+        P.CharacterRemoving:Connect(function()
+            if ESP_PlayerESP[P] then ESP_RemoveHighlight(ESP_PlayerESP[P]) end
+            ESP_RoleCache[P] = nil
+        end)
+    end
+    Players.PlayerAdded:Connect(function(P)
+        P.CharacterRemoving:Connect(function()
+            if ESP_PlayerESP[P] then ESP_RemoveHighlight(ESP_PlayerESP[P]) end
+            ESP_RoleCache[P] = nil
+        end)
+    end)
+
+    -- Main update
+    local function ESP_MainUpdate()
+        if not ESPConfig.MasterEnabled then return end
+
+        local Mid = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+
+        -- Players
+        for _, P in ipairs(Players:GetPlayers()) do
+            if P == LocalPlayer then continue end
+
+            local Char  = P.Character
+            local Root  = Char and Char:FindFirstChild("HumanoidRootPart")
+            local Hum   = Char and Char:FindFirstChildOfClass("Humanoid")
+            local alive = Hum and Hum.Health > 0
+
+            if not Char or not Root or not alive or not ESP_IsAllowed(P) then
+                if ESP_PlayerESP[P] then
+                    ESP_DestroyEntry(ESP_PlayerESP[P])
+                    ESP_PlayerESP[P] = nil
+                    ESP_RoleCache[P] = nil
+                end
+                continue
+            end
+
+            local Role = ESP_GetRole(P)
+            local ShowTarget =
+                (Role == "Murder"   and ESPConfig.ShowMurderer) or
+                (Role == "Sheriff"  and ESPConfig.ShowSheriff)  or
+                (Role == "Innocent" and ESPConfig.ShowInnocent)
+
+            if not ShowTarget then
+                if ESP_PlayerESP[P] then
+                    ESP_DestroyEntry(ESP_PlayerESP[P])
+                    ESP_PlayerESP[P] = nil
+                    ESP_RoleCache[P] = nil
+                end
+                continue
+            end
+
+            if not ESP_PlayerESP[P] then
+                ESP_PlayerESP[P] = ESP_NewEntry()
+            end
+
+            local entry = ESP_PlayerESP[P]
+            local SP, OnScreen = Camera:WorldToViewportPoint(Root.Position)
+
+            if OnScreen then
+                local C = ESPColors[Role]
+
+                if ESPConfig.ShowHighlight then
+                    ESP_EnsurePlayerHL(P, entry, Role, C)
+                else
+                    ESP_RemoveHighlight(entry)
+                    ESP_RoleCache[P] = nil
+                end
+
+                entry.Box.Visible  = true
+                entry.Box.Color    = C
+                entry.Box.Position = Vector2.new(SP.X - 20, SP.Y - 30)
+                entry.Box.Size     = Vector2.new(40, 60)
+
+                if ESPConfig.ShowTexts then
+                    entry.Text.Visible  = true
+                    entry.Text.Text     = "["..Role:upper().."] "..P.Name
+                    entry.Text.Color    = C
+                    entry.Text.Position = Vector2.new(SP.X, SP.Y - 50)
+                else
+                    entry.Text.Visible = false
+                end
+
+                if ESPConfig.ShowLines then
+                    entry.Tracer.Visible = true
+                    entry.Tracer.From    = Mid
+                    entry.Tracer.To      = Vector2.new(SP.X, SP.Y)
+                    entry.Tracer.Color   = C
+                else
+                    entry.Tracer.Visible = false
+                end
+            else
+                entry.Box.Visible    = false
+                entry.Text.Visible   = false
+                entry.Tracer.Visible = false
+            end
+        end
+
+        -- Stale cleanup
+        for P in pairs(ESP_PlayerESP) do
+            if not P.Parent then
+                ESP_DestroyEntry(ESP_PlayerESP[P])
+                ESP_PlayerESP[P] = nil
+                ESP_RoleCache[P] = nil
+            end
+        end
+
+        -- Gun drops
+        if ESPConfig.ShowGun then
+            for gun in pairs(ESP_GunCache) do
+                if not gun.Parent or not gun:IsDescendantOf(Workspace) then
+                    ESP_UnregisterGun(gun)
+                    continue
+                end
+                if not ESP_GunESP[gun] then
+                    ESP_GunESP[gun] = ESP_NewEntry()
+                end
+                local entry = ESP_GunESP[gun]
+                local Pos, OnScreen = Camera:WorldToViewportPoint(gun.Position)
+                local C = ESPColors.DroppedGun
+                local fallback = not ESPConfig.ShowLines and not ESPConfig.ShowTexts
+                if ESPConfig.ShowHighlight or fallback then
+                    ESP_EnsureGunHL(gun, entry)
+                else
+                    ESP_RemoveHighlight(entry)
+                end
+                if OnScreen then
+                    entry.Box.Visible  = true
+                    entry.Box.Color    = C
+                    entry.Box.Position = Vector2.new(Pos.X - 10, Pos.Y - 10)
+                    entry.Box.Size     = Vector2.new(20, 20)
+                    if ESPConfig.ShowTexts then
+                        entry.Text.Visible   = true
+                        entry.Text.Text      = "[ GUN ]"
+                        entry.Text.Color     = C
+                        entry.Text.Position  = Vector2.new(Pos.X, Pos.Y - 28)
+                    else
+                        entry.Text.Visible = false
+                    end
+                    if ESPConfig.ShowLines then
+                        entry.Tracer.Visible = true
+                        entry.Tracer.From    = Mid
+                        entry.Tracer.To      = Vector2.new(Pos.X, Pos.Y)
+                        entry.Tracer.Color   = C
+                    else
+                        entry.Tracer.Visible = false
+                    end
+                else
+                    entry.Box.Visible    = false
+                    entry.Text.Visible   = false
+                    entry.Tracer.Visible = false
+                end
+            end
+        else
+            for gun, entry in pairs(ESP_GunESP) do
+                ESP_DestroyEntry(entry)
+                ESP_GunESP[gun] = nil
+            end
         end
     end
-    for _, G in ipairs(GunCache) do
-        if not Visuals.Guns[G] then NewDraw(G, "Guns") end
-    end
-end
 
-Tabs.ESP:Toggle({
-    ["Title"] = "Master ESP Switch",
-    ["Value"] = false,
-    ["Callback"] = function(S) 
-        Config.MasterEnabled = S 
-        if not S then
-            for _, v in pairs(Visuals.Players) do DestroyDrawings(v) end
-            for _, v in pairs(Visuals.Guns) do DestroyDrawings(v) end
-            table.clear(Visuals.Players); table.clear(Visuals.Guns)
-        end
-    end
-})
+    -- WindUI controls
+    Tabs.ESP:Toggle({
+        ["Title"]    = "Master ESP Switch",
+        ["Value"]    = false,
+        ["Callback"] = function(S)
+            ESPConfig.MasterEnabled = S
+            if not S then ESP_CleanupAll() end
+        end,
+    })
 
-Tabs.ESP:Toggle({["Title"] = "Murderer", ["Value"] = true, ["Callback"] = function(S) Config.ShowMurder = S end})
-Tabs.ESP:Toggle({["Title"] = "Sheriff", ["Value"] = true, ["Callback"] = function(S) Config.ShowSheriff = S end})
-Tabs.ESP:Toggle({["Title"] = "Innocents", ["Value"] = true, ["Callback"] = function(S) Config.ShowInnocent = S end})
-Tabs.ESP:Toggle({["Title"] = "Gun Drop", ["Value"] = true, ["Callback"] = function(S) Config.ShowGun = S end})
+    Tabs.ESP:Dropdown({
+        ["Title"]     = "ESP Mode",
+        ["Desc"]      = "Choose which visual elements to display",
+        ["Values"]    = {"Lines", "Texts", "Highlight"},
+        ["Value"]     = {"Lines", "Texts", "Highlight"},
+        ["Multi"]     = true,
+        ["AllowNone"] = true,
+        ["Callback"]  = function(Selected)
+            ESPConfig.ShowLines     = false
+            ESPConfig.ShowTexts     = false
+            ESPConfig.ShowHighlight = false
+            for _, v in pairs(Selected) do
+                if v == "Lines"     then ESPConfig.ShowLines     = true end
+                if v == "Texts"     then ESPConfig.ShowTexts     = true end
+                if v == "Highlight" then ESPConfig.ShowHighlight = true end
+            end
+            if not ESPConfig.ShowHighlight then
+                for _, e in pairs(ESP_PlayerESP) do ESP_RemoveHighlight(e) end
+                for _, e in pairs(ESP_GunESP)    do ESP_RemoveHighlight(e) end
+                table.clear(ESP_RoleCache)
+            end
+        end,
+    })
 
-RunService.RenderStepped:Connect(function() pcall(MainUpdate) end)
+    Tabs.ESP:Dropdown({
+        ["Title"]     = "ESP Target",
+        ["Desc"]      = "Choose which roles and objects to show",
+        ["Values"]    = {"Murderer", "Sheriff", "Innocent", "Gun Dropped"},
+        ["Value"]     = {"Murderer", "Sheriff", "Innocent", "Gun Dropped"},
+        ["Multi"]     = true,
+        ["AllowNone"] = true,
+        ["Callback"]  = function(Selected)
+            ESPConfig.ShowMurderer = false
+            ESPConfig.ShowSheriff  = false
+            ESPConfig.ShowInnocent = false
+            ESPConfig.ShowGun      = false
+            for _, v in pairs(Selected) do
+                if v == "Murderer"    then ESPConfig.ShowMurderer = true end
+                if v == "Sheriff"     then ESPConfig.ShowSheriff  = true end
+                if v == "Innocent"    then ESPConfig.ShowInnocent = true end
+                if v == "Gun Dropped" then ESPConfig.ShowGun      = true end
+            end
+            if not ESPConfig.ShowGun then
+                for gun, entry in pairs(ESP_GunESP) do
+                    ESP_DestroyEntry(entry)
+                    ESP_GunESP[gun] = nil
+                end
+            end
+        end,
+    })
+
+    Tabs.ESP:Slider({
+        ["Title"] = "Chams Opacity",
+        ["Desc"]  = "Fill transparency of all highlights",
+        ["Value"] = {["Min"] = 0, ["Max"] = 1, ["Default"] = 0.5},
+        ["Callback"] = function(V)
+            ESPConfig.ChamsTransparency = V
+            for _, e in pairs(ESP_PlayerESP) do if e.Highlight then e.Highlight.FillTransparency = V end end
+            for _, e in pairs(ESP_GunESP)    do if e.Highlight then e.Highlight.FillTransparency = V end end
+        end,
+    })
+
+    RunService.Heartbeat:Connect(function()
+        if ESPConfig.MasterEnabled then pcall(ESP_MainUpdate) end
+    end)
+
+end -- <<<< END DO BLOCK
 
 Tabs.ESP:Section({
     ["Title"] = "Expose Roles",
@@ -4096,7 +4336,7 @@ Info:Section({
 
 Info:Paragraph({
     ["Title"] = "Current Features",
-    ["Desc"] = "Fake Jump bomb",
+    ["Desc"] = "• Fake Bomb jump\n• upgraded ESP",
     ["Image"] = "rbxassetid://89804924525665",
     ["ImageSize"] = 30
 })

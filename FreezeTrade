@@ -1,0 +1,913 @@
+-- ============================================================
+--   Eliana Hub | Freeze Trade - Murder Mystery 2
+--   Version: V7
+-- ============================================================
+
+local Players         = game:GetService("Players")
+local TweenService    = game:GetService("TweenService")
+local RunService      = game:GetService("RunService")
+local UserInputService= game:GetService("UserInputService")
+local LocalPlayer     = Players.LocalPlayer
+
+-- ============================================================
+-- THEME
+-- ============================================================
+local T = {
+    Primary      = Color3.fromRGB(98,  0,  238),
+    PrimaryLight = Color3.fromRGB(130, 40,  255),
+    PrimaryDark  = Color3.fromRGB(55,  0,  150),
+    Accent       = Color3.fromRGB(180, 100, 255),
+    AccentGlow   = Color3.fromRGB(210, 155, 255),
+    Bg           = Color3.fromRGB(12,  8,   24),
+    Surface      = Color3.fromRGB(22,  14,  42),
+    SurfaceHov   = Color3.fromRGB(38,  24,  65),
+    Border       = Color3.fromRGB(80,  40,  140),
+    BorderLight  = Color3.fromRGB(120, 70,  200),
+    Text         = Color3.fromRGB(240, 230, 255),
+    TextDim      = Color3.fromRGB(160, 140, 200),
+    TextMuted    = Color3.fromRGB(100, 85,  140),
+    Success      = Color3.fromRGB(100, 255, 160),
+    Warning      = Color3.fromRGB(255, 200, 80),
+    BarFill      = Color3.fromRGB(155, 75,  255),
+    BarBg        = Color3.fromRGB(28,  16,  52),
+    White        = Color3.fromRGB(255, 255, 255),
+    ErrRed       = Color3.fromRGB(180, 55,  55),
+    SuccGreen    = Color3.fromRGB(20,  115, 55),
+}
+
+-- ============================================================
+-- UTILITIES
+-- ============================================================
+local function Tw(obj, props, t, sty, dir)
+    TweenService:Create(obj,
+        TweenInfo.new(t or 0.25, sty or Enum.EasingStyle.Quart, dir or Enum.EasingDirection.Out),
+        props):Play()
+end
+
+local function Cr(p, r)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, r or 10)
+    c.Parent = p
+end
+
+local function St(p, col, th, tr)
+    local s = Instance.new("UIStroke")
+    s.Color       = col or T.Border
+    s.Thickness   = th  or 1.5
+    s.Transparency= tr  or 0
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Parent = p
+    return s
+end
+
+local function Gr(p, rot, seq)
+    local g = Instance.new("UIGradient")
+    g.Rotation = rot or 0
+    g.Color    = seq or ColorSequence.new({
+        ColorSequenceKeypoint.new(0, T.PrimaryLight),
+        ColorSequenceKeypoint.new(1, T.PrimaryDark),
+    })
+    g.Parent = p
+end
+
+local function Lbl(parent, text, font, size, color, ax, zi, sx, sy, px, py)
+    local l = Instance.new("TextLabel")
+    l.BackgroundTransparency = 1
+    l.Text   = text
+    l.Font   = font  or Enum.Font.Gotham
+    l.TextSize = size or 13
+    l.TextColor3 = color or T.Text
+    l.TextXAlignment = ax or Enum.TextXAlignment.Left
+    l.Size   = UDim2.new(sx or 1, 0, sy or 1, 0)
+    l.Position = UDim2.new(px or 0, 0, py or 0, 0)
+    l.ZIndex = zi or 12
+    l.Parent = parent
+    return l
+end
+
+-- ============================================================
+-- SCREENGUI  (single root, no extra frames in ScreenGui)
+-- ============================================================
+local Gui = Instance.new("ScreenGui")
+Gui.Name           = "ElianaHub"
+Gui.ResetOnSpawn   = false
+Gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+Gui.DisplayOrder   = 999
+Gui.IgnoreGuiInset = true
+local ok = pcall(function() Gui.Parent = game:GetService("CoreGui") end)
+if not ok then Gui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+
+-- ============================================================
+-- MAIN FRAME
+-- KEY DESIGN:
+--   ClipsDescendants = false  -> UICorner + UIStroke render perfectly
+--   Minimize works by toggling BodyFrame.Visible instead of resizing
+--   This means ZERO bleed, ZERO extra overlay frames needed
+-- ============================================================
+local FULL_H = 432
+local TITLE_H = 48
+
+local Main = Instance.new("Frame")
+Main.Name              = "Main"
+Main.Size              = UDim2.new(0, 340, 0, FULL_H)
+Main.Position          = UDim2.new(0.5, -170, 0.5, -216)
+Main.BackgroundColor3  = T.Bg
+Main.BorderSizePixel   = 0
+Main.ZIndex            = 10
+Main.ClipsDescendants  = false   -- must be false for UICorner + UIStroke to show
+Main.Parent            = Gui
+Cr(Main, 16)
+St(Main, T.Border, 1.5)
+Gr(Main, 135, ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(26, 12, 52)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(10,  6, 20)),
+}))
+
+-- ============================================================
+-- DRAG
+-- ============================================================
+do
+    local drag, dInput, dStart, dPos
+    Main.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1
+        or i.UserInputType == Enum.UserInputType.Touch then
+            drag = true; dStart = i.Position; dPos = Main.Position
+            i.Changed:Connect(function()
+                if i.UserInputState == Enum.UserInputState.End then drag = false end
+            end)
+        end
+    end)
+    Main.InputChanged:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseMovement
+        or i.UserInputType == Enum.UserInputType.Touch then dInput = i end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if i == dInput and drag then
+            local d = i.Position - dStart
+            Main.Position = UDim2.new(dPos.X.Scale, dPos.X.Offset + d.X,
+                                      dPos.Y.Scale, dPos.Y.Offset + d.Y)
+        end
+    end)
+end
+
+-- ============================================================
+-- TITLE AREA
+-- Everything parents directly to Main (BackgroundTransparency=1).
+-- Main's own gradient background shows through with zero seams.
+-- The accent strip is a plain frame - Main's UICorner clips its
+-- top corners naturally since Main has ClipsDescendants=false
+-- but UICorner applies visual rounding at render time regardless.
+-- ============================================================
+
+-- Transparent hit area for drag / button anchoring
+local TitleBar = Instance.new("Frame")
+TitleBar.Size                 = UDim2.new(1, 0, 0, TITLE_H)
+TitleBar.Position             = UDim2.new(0, 0, 0, 0)
+TitleBar.BackgroundTransparency = 1
+TitleBar.BorderSizePixel      = 0
+TitleBar.ZIndex               = 11
+TitleBar.Parent               = Main
+
+
+
+-- Logo square - parented directly to Main
+local LogoBg = Instance.new("Frame")
+LogoBg.Size            = UDim2.new(0, 28, 0, 28)
+LogoBg.Position        = UDim2.new(0, 10, 0, 10)
+LogoBg.BackgroundColor3= T.Primary
+LogoBg.BorderSizePixel = 0
+LogoBg.ZIndex          = 13
+LogoBg.Parent          = Main
+Cr(LogoBg, 8)
+Gr(LogoBg, 135, ColorSequence.new({
+    ColorSequenceKeypoint.new(0, T.AccentGlow),
+    ColorSequenceKeypoint.new(1, T.PrimaryDark),
+}))
+Lbl(LogoBg, "*", Enum.Font.GothamBlack, 16, T.White, Enum.TextXAlignment.Center, 14)
+
+-- Title label - parented directly to Main
+local TitleLbl = Instance.new("TextLabel")
+TitleLbl.Size                 = UDim2.new(0, 160, 0, 20)
+TitleLbl.Position             = UDim2.new(0, 46, 0, 8)
+TitleLbl.BackgroundTransparency = 1
+TitleLbl.Text                 = "Eliana Hub"
+TitleLbl.Font                 = Enum.Font.GothamBlack
+TitleLbl.TextSize             = 16
+TitleLbl.TextColor3           = T.Text
+TitleLbl.TextXAlignment       = Enum.TextXAlignment.Left
+TitleLbl.ZIndex               = 13
+TitleLbl.Parent               = Main
+Gr(TitleLbl, 0, ColorSequence.new({
+    ColorSequenceKeypoint.new(0,   T.AccentGlow),
+    ColorSequenceKeypoint.new(0.6, T.Text),
+    ColorSequenceKeypoint.new(1,   T.Accent),
+}))
+
+-- Subtitle pipe + text - parented directly to Main
+local SubPipe = Instance.new("Frame")
+SubPipe.Size            = UDim2.new(0, 2, 0, 10)
+SubPipe.Position        = UDim2.new(0, 46, 0, 31)
+SubPipe.BackgroundColor3= T.Accent
+SubPipe.BorderSizePixel = 0
+SubPipe.ZIndex          = 13
+SubPipe.Parent          = Main
+Cr(SubPipe, 1)
+
+local SubLbl = Instance.new("TextLabel")
+SubLbl.Size                 = UDim2.new(0, 150, 0, 13)
+SubLbl.Position             = UDim2.new(0, 52, 0, 30)
+SubLbl.BackgroundTransparency = 1
+SubLbl.Text                 = "Murder Mystery 2"
+SubLbl.Font                 = Enum.Font.GothamSemibold
+SubLbl.TextSize             = 10
+SubLbl.TextColor3           = T.TextDim
+SubLbl.TextXAlignment       = Enum.TextXAlignment.Left
+SubLbl.ZIndex               = 13
+SubLbl.Parent               = Main
+
+-- Close button - parented to TitleBar (transparent)
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size            = UDim2.new(0, 24, 0, 24)
+CloseBtn.Position        = UDim2.new(1, -30, 0.5, -12)
+CloseBtn.BackgroundColor3= Color3.fromRGB(50, 20, 80)
+CloseBtn.Text            = "X"
+CloseBtn.TextColor3      = T.TextDim
+CloseBtn.TextSize        = 11
+CloseBtn.Font            = Enum.Font.GothamBold
+CloseBtn.BorderSizePixel = 0
+CloseBtn.ZIndex          = 15
+CloseBtn.Parent          = TitleBar
+Cr(CloseBtn, 6)
+St(CloseBtn, T.Border, 1)
+CloseBtn.MouseEnter:Connect(function()
+    Tw(CloseBtn, {BackgroundColor3 = Color3.fromRGB(160, 30, 75), TextColor3 = T.White}, 0.15)
+end)
+CloseBtn.MouseLeave:Connect(function()
+    Tw(CloseBtn, {BackgroundColor3 = Color3.fromRGB(50, 20, 80), TextColor3 = T.TextDim}, 0.15)
+end)
+CloseBtn.MouseButton1Click:Connect(function()
+    Tw(Main, {BackgroundTransparency = 1, Size = UDim2.new(0, 340, 0, 0)}, 0.28)
+    task.delay(0.3, function() Gui:Destroy() end)
+end)
+
+-- Minimize button - parented to TitleBar (transparent)
+local MinBtn = Instance.new("TextButton")
+MinBtn.Size            = UDim2.new(0, 24, 0, 24)
+MinBtn.Position        = UDim2.new(1, -58, 0.5, -12)
+MinBtn.BackgroundColor3= Color3.fromRGB(50, 20, 80)
+MinBtn.Text            = "-"
+MinBtn.TextColor3      = T.TextDim
+MinBtn.TextSize        = 16
+MinBtn.Font            = Enum.Font.GothamBold
+MinBtn.BorderSizePixel = 0
+MinBtn.ZIndex          = 15
+MinBtn.Parent          = TitleBar
+Cr(MinBtn, 6)
+St(MinBtn, T.Border, 1)
+MinBtn.MouseEnter:Connect(function()
+    Tw(MinBtn, {BackgroundColor3 = Color3.fromRGB(68, 32, 115), TextColor3 = T.White}, 0.15)
+end)
+MinBtn.MouseLeave:Connect(function()
+    Tw(MinBtn, {BackgroundColor3 = Color3.fromRGB(50, 20, 80), TextColor3 = T.TextDim}, 0.15)
+end)
+
+-- Divider
+local Divider = Instance.new("Frame")
+Divider.Size            = UDim2.new(1, -20, 0, 1)
+Divider.Position        = UDim2.new(0, 10, 0, TITLE_H)
+Divider.BackgroundColor3= T.Border
+Divider.BorderSizePixel = 0
+Divider.ZIndex          = 11
+Divider.Parent          = Main
+Gr(Divider, 0, ColorSequence.new({
+    ColorSequenceKeypoint.new(0,   Color3.fromRGB(0, 0, 0)),
+    ColorSequenceKeypoint.new(0.3, T.BorderLight),
+    ColorSequenceKeypoint.new(0.7, T.BorderLight),
+    ColorSequenceKeypoint.new(1,   Color3.fromRGB(0, 0, 0)),
+}))
+
+-- ============================================================
+-- BODY FRAME
+-- This single frame holds ALL content below the title bar.
+-- Minimize = BodyFrame.Visible = false  +  shrink Main height.
+-- This is the cleanest approach: no clipping issues at all.
+-- ============================================================
+local Body = Instance.new("Frame")
+Body.Name              = "Body"
+Body.Size              = UDim2.new(1, -24, 0, FULL_H - TITLE_H - 10)
+Body.Position          = UDim2.new(0, 12, 0, TITLE_H + 6)
+Body.BackgroundTransparency = 1
+Body.BorderSizePixel   = 0
+Body.ZIndex            = 11
+Body.Parent            = Main
+
+-- Minimize logic: hide body + shrink main height
+local minimized = false
+MinBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    if minimized then
+        Body.Visible = false
+        Divider.Visible = false
+        Tw(Main, {Size = UDim2.new(0, 340, 0, TITLE_H)}, 0.28)
+    else
+        Tw(Main, {Size = UDim2.new(0, 340, 0, FULL_H)}, 0.28,
+            Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+        task.delay(0.1, function()
+            Body.Visible = true
+            Divider.Visible = true
+        end)
+    end
+end)
+
+-- ============================================================
+-- SELECT PLAYER LABEL
+-- ============================================================
+local SelLbl = Lbl(Body, "SELECT A PLAYER", Enum.Font.GothamBold, 10,
+    T.Accent, Enum.TextXAlignment.Left, 12)
+SelLbl.Size     = UDim2.new(1, 0, 0, 14)
+SelLbl.Position = UDim2.new(0, 0, 0, 0)
+
+-- ============================================================
+-- DROPDOWN  (Y=18)
+-- ============================================================
+local DD = Instance.new("Frame")
+DD.Size            = UDim2.new(1, 0, 0, 44)
+DD.Position        = UDim2.new(0, 0, 0, 18)
+DD.BackgroundColor3= T.Surface
+DD.BorderSizePixel = 0
+DD.ZIndex          = 12
+DD.Parent          = Body
+Cr(DD, 11)
+St(DD, T.Border, 1.5)
+
+local DDIconBg = Instance.new("Frame")
+DDIconBg.Size            = UDim2.new(0, 34, 0, 34)
+DDIconBg.Position        = UDim2.new(0, 5, 0.5, -17)
+DDIconBg.BackgroundColor3= T.PrimaryDark
+DDIconBg.BorderSizePixel = 0
+DDIconBg.ZIndex          = 13
+DDIconBg.Parent          = DD
+Cr(DDIconBg, 9)
+St(DDIconBg, T.Border, 1)
+
+local DDIcon = Instance.new("ImageLabel")
+DDIcon.Size               = UDim2.new(1, 0, 1, 0)
+DDIcon.BackgroundTransparency = 1
+DDIcon.Image              = ""
+DDIcon.ZIndex             = 14
+DDIcon.ScaleType          = Enum.ScaleType.Crop
+DDIcon.Parent             = DDIconBg
+Cr(DDIcon, 9)
+
+local DDPlaceholder = Lbl(DDIconBg, "?", Enum.Font.GothamBlack, 15, T.TextMuted,
+    Enum.TextXAlignment.Center, 14)
+
+local DDBtn = Instance.new("TextButton")
+DDBtn.Size            = UDim2.new(1, -52, 1, 0)
+DDBtn.Position        = UDim2.new(0, 46, 0, 0)
+DDBtn.BackgroundTransparency = 1
+DDBtn.Text            = "Select a player..."
+DDBtn.Font            = Enum.Font.GothamSemibold
+DDBtn.TextSize        = 13
+DDBtn.TextColor3      = T.TextMuted
+DDBtn.TextXAlignment  = Enum.TextXAlignment.Left
+DDBtn.ZIndex          = 14
+DDBtn.Parent          = DD
+
+local DDArrow = Lbl(DD, "v", Enum.Font.GothamBold, 11, T.Accent,
+    Enum.TextXAlignment.Center, 14)
+DDArrow.Size     = UDim2.new(0, 18, 1, 0)
+DDArrow.Position = UDim2.new(1, -22, 0, 0)
+
+-- Dropdown popup list
+local DDList = Instance.new("Frame")
+DDList.Size            = UDim2.new(1, 0, 0, 0)
+DDList.Position        = UDim2.new(0, 0, 0, 66)  -- 18 + 44 + 4
+DDList.BackgroundColor3= T.Surface
+DDList.BorderSizePixel = 0
+DDList.ZIndex          = 22
+DDList.ClipsDescendants= true
+DDList.Visible         = false
+DDList.Parent          = Body
+Cr(DDList, 10)
+St(DDList, T.BorderLight, 1.5)
+
+local DDScroll = Instance.new("ScrollingFrame")
+DDScroll.Size               = UDim2.new(1, -4, 1, -4)
+DDScroll.Position           = UDim2.new(0, 2, 0, 2)
+DDScroll.BackgroundTransparency = 1
+DDScroll.BorderSizePixel    = 0
+DDScroll.ScrollBarThickness = 3
+DDScroll.ScrollBarImageColor3 = T.Accent
+DDScroll.ZIndex             = 23
+DDScroll.Parent             = DDList
+
+local DDLayout = Instance.new("UIListLayout")
+DDLayout.SortOrder = Enum.SortOrder.Name
+DDLayout.Padding   = UDim.new(0, 2)
+DDLayout.Parent    = DDScroll
+
+local DDPad = Instance.new("UIPadding")
+DDPad.PaddingTop    = UDim.new(0, 3)
+DDPad.PaddingBottom = UDim.new(0, 3)
+DDPad.PaddingLeft   = UDim.new(0, 3)
+DDPad.PaddingRight  = UDim.new(0, 3)
+DDPad.Parent        = DDScroll
+
+-- ============================================================
+-- PLAYER CARD  (Y=70)
+-- ============================================================
+local Card = Instance.new("Frame")
+Card.Size            = UDim2.new(1, 0, 0, 74)
+Card.Position        = UDim2.new(0, 0, 0, 70)
+Card.BackgroundColor3= T.Surface
+Card.BorderSizePixel = 0
+Card.ZIndex          = 12
+Card.Parent          = Body
+Cr(Card, 12)
+St(Card, T.Border, 1.5)
+
+local CardGlow = Instance.new("Frame")
+CardGlow.Size            = UDim2.new(0, 3, 0.65, 0)
+CardGlow.Position        = UDim2.new(0, 0, 0.175, 0)
+CardGlow.BackgroundColor3= T.Accent
+CardGlow.BorderSizePixel = 0
+CardGlow.ZIndex          = 13
+CardGlow.Parent          = Card
+Cr(CardGlow, 2)
+
+local CardIconBg = Instance.new("Frame")
+CardIconBg.Size            = UDim2.new(0, 50, 0, 50)
+CardIconBg.Position        = UDim2.new(0, 12, 0.5, -25)
+CardIconBg.BackgroundColor3= T.PrimaryDark
+CardIconBg.BorderSizePixel = 0
+CardIconBg.ZIndex          = 13
+CardIconBg.Parent          = Card
+Cr(CardIconBg, 12)
+St(CardIconBg, T.BorderLight, 2)
+
+local CardIcon = Instance.new("ImageLabel")
+CardIcon.Size               = UDim2.new(1, 0, 1, 0)
+CardIcon.BackgroundTransparency = 1
+CardIcon.Image              = ""
+CardIcon.ZIndex             = 14
+CardIcon.ScaleType          = Enum.ScaleType.Crop
+CardIcon.Parent             = CardIconBg
+Cr(CardIcon, 12)
+
+local CardIconPH = Lbl(CardIconBg, "?", Enum.Font.GothamBlack, 24, T.TextMuted,
+    Enum.TextXAlignment.Center, 14)
+
+local CardName = Lbl(Card, "No player selected", Enum.Font.GothamBold, 14,
+    T.TextMuted, Enum.TextXAlignment.Left, 13)
+CardName.Size     = UDim2.new(1, -82, 0, 20)
+CardName.Position = UDim2.new(0, 74, 0, 13)
+
+local CardStatusF = Instance.new("Frame")
+CardStatusF.Size            = UDim2.new(0, 82, 0, 18)
+CardStatusF.Position        = UDim2.new(0, 74, 0, 38)
+CardStatusF.BackgroundColor3= Color3.fromRGB(40, 20, 20)
+CardStatusF.ZIndex          = 13
+CardStatusF.Parent          = Card
+Cr(CardStatusF, 5)
+
+local CardDot = Instance.new("Frame")
+CardDot.Size            = UDim2.new(0, 6, 0, 6)
+CardDot.Position        = UDim2.new(0, 7, 0.5, -3)
+CardDot.BackgroundColor3= T.ErrRed
+CardDot.ZIndex          = 14
+CardDot.Parent          = CardStatusF
+Cr(CardDot, 3)
+
+local CardStatusTxt = Lbl(CardStatusF, "None", Enum.Font.GothamSemibold, 10,
+    T.ErrRed, Enum.TextXAlignment.Left, 14)
+CardStatusTxt.Size     = UDim2.new(1, -20, 1, 0)
+CardStatusTxt.Position = UDim2.new(0, 18, 0, 0)
+
+-- ============================================================
+-- STATUS BAR  (Y=152)
+-- ============================================================
+local BarSect = Instance.new("Frame")
+BarSect.Size            = UDim2.new(1, 0, 0, 38)
+BarSect.Position        = UDim2.new(0, 0, 0, 152)
+BarSect.BackgroundTransparency = 1
+BarSect.ZIndex          = 12
+BarSect.Parent          = Body
+
+local BarTitl = Lbl(BarSect, "STATUS", Enum.Font.GothamBold, 10, T.Accent,
+    Enum.TextXAlignment.Left, 13)
+BarTitl.Size     = UDim2.new(0.6, 0, 0, 13)
+BarTitl.Position = UDim2.new(0, 0, 0, 0)
+
+local BarPct = Lbl(BarSect, "IDLE", Enum.Font.GothamBold, 10, T.TextMuted,
+    Enum.TextXAlignment.Right, 13)
+BarPct.Size     = UDim2.new(0.4, 0, 0, 13)
+BarPct.Position = UDim2.new(0.6, 0, 0, 0)
+
+local BarBg = Instance.new("Frame")
+BarBg.Size            = UDim2.new(1, 0, 0, 13)
+BarBg.Position        = UDim2.new(0, 0, 0, 17)
+BarBg.BackgroundColor3= T.BarBg
+BarBg.BorderSizePixel = 0
+BarBg.ZIndex          = 13
+BarBg.Parent          = BarSect
+Cr(BarBg, 7)
+St(BarBg, T.Border, 1)
+
+local BarFill = Instance.new("Frame")
+BarFill.Size            = UDim2.new(0, 0, 1, 0)
+BarFill.BackgroundColor3= T.BarFill
+BarFill.BorderSizePixel = 0
+BarFill.ZIndex          = 14
+BarFill.ClipsDescendants= true
+BarFill.Parent          = BarBg
+Cr(BarFill, 7)
+Gr(BarFill, 0, ColorSequence.new({
+    ColorSequenceKeypoint.new(0, T.Accent),
+    ColorSequenceKeypoint.new(1, T.AccentGlow),
+}))
+
+local BarShimmer = Instance.new("Frame")
+BarShimmer.Size            = UDim2.new(0, 34, 1, 0)
+BarShimmer.Position        = UDim2.new(-0.2, 0, 0, 0)
+BarShimmer.BackgroundColor3= T.White
+BarShimmer.BackgroundTransparency = 0.76
+BarShimmer.BorderSizePixel = 0
+BarShimmer.ZIndex          = 15
+BarShimmer.Parent          = BarFill
+Cr(BarShimmer, 4)
+
+-- ============================================================
+-- FREEZE BUTTON  (Y=200)
+-- ============================================================
+local FBF = Instance.new("Frame")
+FBF.Size            = UDim2.new(1, 0, 0, 50)
+FBF.Position        = UDim2.new(0, 0, 0, 200)
+FBF.BackgroundColor3= T.Primary
+FBF.BorderSizePixel = 0
+FBF.ZIndex          = 12
+FBF.Parent          = Body
+Cr(FBF, 13)
+Gr(FBF, 135, ColorSequence.new({
+    ColorSequenceKeypoint.new(0, T.PrimaryLight),
+    ColorSequenceKeypoint.new(1, T.PrimaryDark),
+}))
+local FBStroke = St(FBF, T.AccentGlow, 1.5, 0.3)
+
+local FBInner = Instance.new("Frame")
+FBInner.Size            = UDim2.new(1, -4, 1, -4)
+FBInner.Position        = UDim2.new(0, 2, 0, 2)
+FBInner.BackgroundColor3= T.White
+FBInner.BackgroundTransparency = 0.93
+FBInner.BorderSizePixel = 0
+FBInner.ZIndex          = 13
+FBInner.Parent          = FBF
+Cr(FBInner, 11)
+
+local FBIcon = Lbl(FBF, "*", Enum.Font.GothamBlack, 22, T.AccentGlow,
+    Enum.TextXAlignment.Center, 15)
+FBIcon.Size     = UDim2.new(0, 26, 1, 0)
+FBIcon.Position = UDim2.new(0, 12, 0, 0)
+
+local FBTitle = Lbl(FBF, "FREEZE TRADE", Enum.Font.GothamBlack, 14, T.White,
+    Enum.TextXAlignment.Left, 15)
+FBTitle.Size     = UDim2.new(1, -50, 0, 22)
+FBTitle.Position = UDim2.new(0, 44, 0, 6)
+
+local FBSub = Lbl(FBF, "Click to freeze selected player's trade",
+    Enum.Font.Gotham, 9, Color3.fromRGB(200, 175, 255),
+    Enum.TextXAlignment.Left, 15)
+FBSub.Size     = UDim2.new(1, -50, 0, 13)
+FBSub.Position = UDim2.new(0, 44, 0, 30)
+
+local FreezeBtn = Instance.new("TextButton")
+FreezeBtn.Size            = UDim2.new(1, 0, 1, 0)
+FreezeBtn.BackgroundTransparency = 1
+FreezeBtn.Text            = ""
+FreezeBtn.ZIndex          = 16
+FreezeBtn.Parent          = FBF
+
+-- ============================================================
+-- STATUS BOX  (Y=260)
+-- ============================================================
+local SBox = Instance.new("Frame")
+SBox.Size            = UDim2.new(1, 0, 0, 44)
+SBox.Position        = UDim2.new(0, 0, 0, 260)
+SBox.BackgroundColor3= T.Surface
+SBox.BackgroundTransparency = 1
+SBox.BorderSizePixel = 0
+SBox.ZIndex          = 12
+SBox.Parent          = Body
+Cr(SBox, 10)
+
+local SIcon = Lbl(SBox, "i", Enum.Font.GothamBold, 15, T.Accent,
+    Enum.TextXAlignment.Center, 13)
+SIcon.Size     = UDim2.new(0, 30, 1, 0)
+SIcon.Position = UDim2.new(0, 0, 0, 0)
+
+local SMsg = Lbl(SBox, "Select a player and press Freeze Trade.",
+    Enum.Font.GothamSemibold, 11, T.TextDim, Enum.TextXAlignment.Left, 13)
+SMsg.Size        = UDim2.new(1, -34, 1, 0)
+SMsg.Position    = UDim2.new(0, 34, 0, 0)
+SMsg.TextWrapped = true
+
+local SBoxStroke -- managed dynamically
+
+-- ============================================================
+-- FOOTER  (Y=314)
+-- ============================================================
+local FDiv = Instance.new("Frame")
+FDiv.Size            = UDim2.new(1, 0, 0, 1)
+FDiv.Position        = UDim2.new(0, 0, 0, 314)
+FDiv.BackgroundColor3= T.Border
+FDiv.BorderSizePixel = 0
+FDiv.ZIndex          = 11
+FDiv.Parent          = Body
+Gr(FDiv, 0, ColorSequence.new({
+    ColorSequenceKeypoint.new(0,   Color3.fromRGB(0, 0, 0)),
+    ColorSequenceKeypoint.new(0.3, T.Border),
+    ColorSequenceKeypoint.new(0.7, T.Border),
+    ColorSequenceKeypoint.new(1,   Color3.fromRGB(0, 0, 0)),
+}))
+
+local FLeft = Lbl(Body, "Eliana Hub v1.0", Enum.Font.Gotham, 10, T.TextMuted,
+    Enum.TextXAlignment.Left, 11)
+FLeft.Size     = UDim2.new(0.5, 0, 0, 16)
+FLeft.Position = UDim2.new(0, 0, 0, 319)
+
+local FRight = Lbl(Body, "MM2 Freeze Trade", Enum.Font.Gotham, 10, T.TextMuted,
+    Enum.TextXAlignment.Right, 11)
+FRight.Size     = UDim2.new(0.5, 0, 0, 16)
+FRight.Position = UDim2.new(0.5, 0, 0, 319)
+
+-- ============================================================
+-- HELPER: SYNC CARD
+-- ============================================================
+local function SyncCard(plr)
+    if plr then
+        CardName.Text      = plr.Name
+        CardName.TextColor3= T.Text
+        pcall(function()
+            local img = Players:GetUserThumbnailAsync(plr.UserId,
+                Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+            CardIcon.Image        = img
+            CardIconPH.Visible    = false
+        end)
+        CardStatusF.BackgroundColor3 = Color3.fromRGB(14, 38, 20)
+        CardDot.BackgroundColor3     = Color3.fromRGB(75, 195, 95)
+        CardStatusTxt.Text           = "In Game"
+        CardStatusTxt.TextColor3     = Color3.fromRGB(95, 225, 115)
+    else
+        CardName.Text      = "No player selected"
+        CardName.TextColor3= T.TextMuted
+        CardIcon.Image     = ""
+        CardIconPH.Visible = true
+        CardStatusF.BackgroundColor3 = Color3.fromRGB(40, 20, 20)
+        CardDot.BackgroundColor3     = T.ErrRed
+        CardStatusTxt.Text           = "None"
+        CardStatusTxt.TextColor3     = T.ErrRed
+    end
+end
+
+-- ============================================================
+-- HELPER: STATUS BOX
+-- ============================================================
+local function SetStatus(icon, iCol, msg, mCol, sCol, show)
+    SBox.BackgroundTransparency = show and 0 or 1
+    SIcon.Text       = icon
+    SIcon.TextColor3 = iCol
+    SMsg.Text        = msg
+    SMsg.TextColor3  = mCol
+    if SBoxStroke then SBoxStroke:Destroy(); SBoxStroke = nil end
+    if sCol then SBoxStroke = St(SBox, sCol, 1.5) end
+end
+
+-- ============================================================
+-- DROPDOWN LOGIC
+-- ============================================================
+local selPlayer = nil
+local ddOpen    = false
+
+local function DDClose()
+    ddOpen = false
+    Tw(DDList, {Size = UDim2.new(1, 0, 0, 0)}, 0.2)
+    task.delay(0.21, function() DDList.Visible = false end)
+end
+
+local function DDOpen()
+    ddOpen = true
+    DDList.Visible = true
+    local cnt = #Players:GetPlayers()
+    local h   = math.min(cnt * 34 + 6, 148)
+    Tw(DDList, {Size = UDim2.new(1, 0, 0, h)}, 0.2)
+    DDScroll.CanvasSize = UDim2.new(0, 0, 0, DDLayout.AbsoluteContentSize.Y + 6)
+end
+
+local function DDPopulate()
+    for _, c in pairs(DDScroll:GetChildren()) do
+        if c:IsA("TextButton") then c:Destroy() end
+    end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        local btn = Instance.new("TextButton")
+        btn.Name             = plr.Name
+        btn.Size             = UDim2.new(1, 0, 0, 30)
+        btn.BackgroundColor3 = T.SurfaceHov
+        btn.BackgroundTransparency = 1
+        btn.Text             = ""
+        btn.ZIndex           = 24
+        btn.Parent           = DDScroll
+        Cr(btn, 7)
+
+        local mBg = Instance.new("Frame")
+        mBg.Size            = UDim2.new(0, 22, 0, 22)
+        mBg.Position        = UDim2.new(0, 4, 0.5, -11)
+        mBg.BackgroundColor3= T.PrimaryDark
+        mBg.BorderSizePixel = 0
+        mBg.ZIndex          = 25
+        mBg.Parent          = btn
+        Cr(mBg, 6)
+
+        local mIco = Instance.new("ImageLabel")
+        mIco.Size               = UDim2.new(1, 0, 1, 0)
+        mIco.BackgroundTransparency = 1
+        mIco.ZIndex             = 26
+        mIco.ScaleType          = Enum.ScaleType.Crop
+        mIco.Parent             = mBg
+        Cr(mIco, 6)
+        pcall(function()
+            mIco.Image = Players:GetUserThumbnailAsync(plr.UserId,
+                Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+        end)
+
+        local nLbl = Lbl(btn, plr.Name, Enum.Font.GothamSemibold, 12, T.Text,
+            Enum.TextXAlignment.Left, 25)
+        nLbl.Size     = UDim2.new(1, -32, 1, 0)
+        nLbl.Position = UDim2.new(0, 30, 0, 0)
+
+        btn.MouseEnter:Connect(function() Tw(btn, {BackgroundTransparency = 0}, 0.1) end)
+        btn.MouseLeave:Connect(function() Tw(btn, {BackgroundTransparency = 1}, 0.1) end)
+        btn.MouseButton1Click:Connect(function()
+            selPlayer         = plr
+            DDBtn.Text        = plr.Name
+            DDBtn.TextColor3  = T.Text
+            pcall(function()
+                local img = Players:GetUserThumbnailAsync(plr.UserId,
+                    Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+                DDIcon.Image        = img
+                DDPlaceholder.Visible = false
+            end)
+            SyncCard(plr)
+            DDClose()
+        end)
+    end
+    DDScroll.CanvasSize = UDim2.new(0, 0, 0, DDLayout.AbsoluteContentSize.Y + 6)
+end
+
+DDBtn.MouseButton1Click:Connect(function()
+    DDPopulate()
+    if ddOpen then DDClose() else DDOpen() end
+end)
+Players.PlayerAdded:Connect(function()
+    if ddOpen then DDPopulate() end
+end)
+Players.PlayerRemoving:Connect(function(plr)
+    if selPlayer == plr then
+        selPlayer = nil
+        DDBtn.Text        = "Select a player..."
+        DDBtn.TextColor3  = T.TextMuted
+        DDIcon.Image      = ""
+        DDPlaceholder.Visible = true
+        SyncCard(nil)
+    end
+    if ddOpen then DDPopulate() end
+end)
+
+-- ============================================================
+-- FREEZE LOGIC
+-- ============================================================
+local freezing    = false
+local shimmerConn = nil
+
+local function ShimmerOn()
+    if shimmerConn then shimmerConn:Disconnect() end
+    local t = 0
+    shimmerConn = RunService.Heartbeat:Connect(function(dt)
+        t = t + dt * 0.7
+        BarShimmer.Position = UDim2.new((t % 1.4) - 0.12, 0, 0, 0)
+    end)
+end
+
+local function ShimmerOff()
+    if shimmerConn then shimmerConn:Disconnect(); shimmerConn = nil end
+end
+
+FreezeBtn.MouseEnter:Connect(function()
+    if not freezing then
+        Tw(FBF, {BackgroundColor3 = T.PrimaryLight}, 0.15)
+        Tw(FBStroke, {Transparency = 0}, 0.15)
+    end
+end)
+FreezeBtn.MouseLeave:Connect(function()
+    if not freezing then
+        Tw(FBF, {BackgroundColor3 = T.Primary}, 0.15)
+        Tw(FBStroke, {Transparency = 0.3}, 0.15)
+    end
+end)
+
+FreezeBtn.MouseButton1Click:Connect(function()
+    if freezing then return end
+
+    if not selPlayer then
+        for i = 1, 6 do
+            Tw(DD, {Position = UDim2.new(0, (i % 2 == 0 and -5 or 5), 0, 18)}, 0.04)
+            task.wait(0.045)
+        end
+        Tw(DD, {Position = UDim2.new(0, 0, 0, 18)}, 0.08)
+        SetStatus("!", T.Warning,
+            "No player selected. Choose a player first.",
+            T.Warning, T.Warning, true)
+        task.delay(3, function()
+            SetStatus("i", T.Accent,
+                "Select a player and press Freeze Trade.",
+                T.TextDim, nil, false)
+        end)
+        return
+    end
+
+    freezing = true
+    FreezeBtn.Active = false
+    FBTitle.Text = "FREEZING..."
+    FBSub.Text   = "Please wait 5 seconds..."
+    FBIcon.Text  = "o"
+    Tw(FBF, {BackgroundColor3 = T.PrimaryDark}, 0.25)
+    SetStatus("~", T.Accent,
+        "Freezing trade for " .. selPlayer.Name .. "...",
+        T.TextDim, T.BorderLight, true)
+
+    BarPct.Text      = "0%"
+    BarPct.TextColor3= T.Accent
+    BarFill.Size     = UDim2.new(0, 0, 1, 0)
+    ShimmerOn()
+
+    local STEPS  = 100
+    local STEP_T = 5 / STEPS
+    for i = 1, STEPS do
+        local pct = i / STEPS
+        Tw(BarFill, {Size = UDim2.new(pct, 0, 1, 0)}, STEP_T, Enum.EasingStyle.Linear)
+        BarPct.Text = math.floor(pct * 100) .. "%"
+        task.wait(STEP_T)
+    end
+
+    ShimmerOff()
+    BarFill.Size      = UDim2.new(1, 0, 1, 0)
+    BarPct.Text       = "FROZEN"
+    BarPct.TextColor3 = T.Success
+
+    Tw(BarFill, {BackgroundColor3 = T.Success}, 0.28)
+    task.delay(0.5, function() Tw(BarFill, {BackgroundColor3 = T.BarFill}, 0.45) end)
+
+    FBTitle.Text = "FREEZE TRADE"
+    FBSub.Text   = "Trade has been frozen successfully!"
+    FBIcon.Text  = "*"
+    Tw(FBF, {BackgroundColor3 = T.SuccGreen}, 0.35)
+    SetStatus("+", T.Success,
+        "Trade has been frozen! Remove your offers now!",
+        T.Success, T.Success, true)
+
+    for _ = 1, 3 do
+        Tw(FBStroke, {Transparency = 0}, 0.18)
+        task.wait(0.22)
+        Tw(FBStroke, {Transparency = 0.6}, 0.18)
+        task.wait(0.22)
+    end
+
+    task.delay(2, function()
+        freezing = false
+        FreezeBtn.Active = true
+        Tw(FBF, {BackgroundColor3 = T.Primary}, 0.35)
+        FBTitle.Text = "FREEZE TRADE"
+        FBSub.Text   = "Click to freeze selected player's trade"
+        FBIcon.Text  = "*"
+        BarPct.Text       = "IDLE"
+        BarPct.TextColor3 = T.TextMuted
+        Tw(BarFill, {Size = UDim2.new(0, 0, 1, 0)}, 0.45)
+        task.delay(0.5, function()
+            SetStatus("i", T.Accent,
+                "Select a player and press Freeze Trade.",
+                T.TextDim, nil, false)
+        end)
+    end)
+end)
+
+-- ============================================================
+-- INTRO ANIMATION
+-- ============================================================
+Main.BackgroundTransparency = 1
+Main.Size = UDim2.new(0, 340, 0, 0)
+task.wait(0.08)
+Tw(Main, {BackgroundTransparency = 0, Size = UDim2.new(0, 340, 0, FULL_H)},
+    0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+
+-- ============================================================
+-- END | Eliana Hub V7
+-- ============================================================

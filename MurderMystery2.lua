@@ -479,7 +479,7 @@ createShape(
     end
 )
 
--- Aimbot for niggers
+-- Aimbot for ZCNathan
 local AimbotActive = false
 local AimbotConnection = nil
 local PredictionFactor = 0.125
@@ -1189,8 +1189,8 @@ Tabs.Main:Button({
 
 -- ==================== FREEZE AURA ====================
 do
-    local FA_HITBOX_RANGE  = 11
-    local FA_FILL_RATE     = 0.5
+    local FA_HITBOX_RANGE  = 15
+    local FA_FILL_RATE     = 1
     local FA_DRAIN_RATE    = 1.0
     local FA_BAR_SHOW_DIST = 20
     local FA_FREEZE_DIST   = 4

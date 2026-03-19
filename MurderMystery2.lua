@@ -4336,7 +4336,7 @@ Info:Section({
 
 Info:Paragraph({
     ["Title"] = "Current Features",
-    ["Desc"] = "• Fake Bomb jump\n• upgraded ESP",
+    ["Desc"] = "• Freeze Aura",
     ["Image"] = "rbxassetid://89804924525665",
     ["ImageSize"] = 30
 })

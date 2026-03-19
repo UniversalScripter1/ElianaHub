@@ -479,7 +479,7 @@ createShape(
     end
 )
 
--- Aimbot for ZCNathan
+-- Aimbot for niggers
 local AimbotActive = false
 local AimbotConnection = nil
 local PredictionFactor = 0.125
@@ -1186,6 +1186,316 @@ Tabs.Main:Button({
         loadstring(game:HttpGet("https://pastefy.app/vmG5vtCc/raw"))("true")
     end
 })
+
+-- ==================== FREEZE AURA ====================
+do
+    local FA_HITBOX_RANGE  = 11
+    local FA_FILL_RATE     = 0.5
+    local FA_DRAIN_RATE    = 1.0
+    local FA_BAR_SHOW_DIST = 20
+    local FA_FREEZE_DIST   = 4
+    local FA_RELEASE_DIST  = 8
+
+    local FA_playerData = {}
+    local FA_active = false
+    local FA_connection = nil
+
+    local function FA_hasKnife()
+        local bp = LocalPlayer:FindFirstChild("Backpack")
+        local ch = LocalPlayer.Character
+        return (bp and bp:FindFirstChild("Knife") ~= nil)
+            or (ch and ch:FindFirstChild("Knife") ~= nil)
+    end
+
+    local function FA_getFrontCFrame()
+        local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not hrp then return CFrame.new() end
+        local pos  = hrp.Position
+        local look = hrp.CFrame.LookVector
+        local dest = pos + look * FA_FREEZE_DIST
+        dest = Vector3.new(dest.X, pos.Y, dest.Z)
+        return CFrame.new(dest, dest + look)
+    end
+
+    local function FA_createBar(player)
+        local char = player.Character
+        if not char then return nil end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return nil end
+        local old = hrp:FindFirstChild("FreezeBarGui")
+        if old then old:Destroy() end
+        local bb = Instance.new("BillboardGui")
+        bb.Name = "FreezeBarGui"
+        bb.Adornee = hrp
+        bb.Size = UDim2.new(0, 90, 0, 14)
+        bb.StudsOffset = Vector3.new(0, 3.2, 0)
+        bb.AlwaysOnTop = true
+        bb.Parent = hrp
+        local bg = Instance.new("Frame")
+        bg.Name = "BG"
+        bg.Size = UDim2.new(1, 0, 1, 0)
+        bg.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        bg.BorderSizePixel = 0
+        bg.Parent = bb
+        Instance.new("UICorner", bg).CornerRadius = UDim.new(1, 0)
+        local fill = Instance.new("Frame")
+        fill.Name = "Fill"
+        fill.Size = UDim2.new(0, 0, 1, 0)
+        fill.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+        fill.BorderSizePixel = 0
+        fill.Parent = bg
+        Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+        return bb
+    end
+
+    local function FA_updateBarFill(barGui, pct)
+        if not barGui or not barGui.Parent then return end
+        local fill = barGui:FindFirstChild("BG") and barGui.BG:FindFirstChild("Fill")
+        if not fill then return end
+        fill.Size = UDim2.new(math.clamp(pct, 0, 1), 0, 1, 0)
+        fill.BackgroundColor3 = Color3.fromRGB(255, math.floor(200 * pct), 0)
+    end
+
+    local function FA_addHighlight(player)
+        local char = player.Character
+        if not char then return nil end
+        local old = char:FindFirstChildOfClass("Highlight")
+        if old then old:Destroy() end
+        local h = Instance.new("Highlight")
+        h.Name = "FreezeHighlight"
+        h.Adornee = char
+        h.FillTransparency = 1
+        h.OutlineColor = Color3.fromRGB(255, 255, 0)
+        h.OutlineTransparency = 0
+        h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        h.Parent = char
+        return h
+    end
+
+    local function FA_addLabel(player)
+        local char = player.Character
+        if not char then return nil end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return nil end
+        local old = hrp:FindFirstChild("FreezeLabel")
+        if old then old:Destroy() end
+        local bb = Instance.new("BillboardGui")
+        bb.Name = "FreezeLabel"
+        bb.Adornee = hrp
+        bb.Size = UDim2.new(0, 110, 0, 32)
+        bb.StudsOffset = Vector3.new(0, 4.8, 0)
+        bb.AlwaysOnTop = true
+        bb.Parent = hrp
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(1, 0, 1, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = "Freezed"
+        lbl.TextColor3 = Color3.fromRGB(255, 255, 0)
+        lbl.TextScaled = true
+        lbl.Font = Enum.Font.GothamBold
+        lbl.TextStrokeTransparency = 0
+        lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        lbl.Parent = bb
+        return bb
+    end
+
+    local function FA_addLine(player)
+        local myHRP = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not myHRP then return nil end
+        local char = player.Character
+        if not char then return nil end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return nil end
+        local line = Instance.new("LineHandleAdornment")
+        line.Name = "FreezeLine"
+        line.Adornee = myHRP
+        line.Thickness = 4
+        line.Color3 = Color3.fromRGB(255, 255, 0)
+        line.AlwaysOnTop = true
+        line.ZIndex = 5
+        line.Length = 0
+        line.Parent = myHRP
+        return line
+    end
+
+    local function FA_freezeChar(player)
+        local char = player.Character
+        if not char then return end
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") then
+                p.Anchored = true
+                p.CanCollide = false
+            end
+        end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed = 0 end
+    end
+
+    local function FA_unfreezeChar(player)
+        local char = player.Character
+        if not char then return end
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") then
+                p.Anchored = false
+                p.CanCollide = true
+            end
+        end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed = 16 end
+    end
+
+    local function FA_releasePlayer(player)
+        local data = FA_playerData[player]
+        if not data then return end
+        if data.highlight and data.highlight.Parent then data.highlight:Destroy() end
+        if data.label     and data.label.Parent     then data.label:Destroy()     end
+        if data.line      and data.line.Parent      then data.line:Destroy()      end
+        if data.barGui    and data.barGui.Parent    then data.barGui:Destroy()    end
+        FA_unfreezeChar(player)
+        FA_playerData[player] = { fill=0, inZone=false, frozen=false, barGui=nil, highlight=nil, label=nil, line=nil }
+    end
+
+    local function FA_purgePlayer(player)
+        FA_releasePlayer(player)
+        FA_playerData[player] = nil
+    end
+
+    local function FA_grabPlayer(player)
+        local data = FA_playerData[player]
+        if not data or data.frozen then return end
+        local char = player.Character
+        if not char then return end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        if data.barGui and data.barGui.Parent then data.barGui:Destroy() end
+        data.barGui = nil
+        data.fill = 0
+        data.inZone = false
+        data.frozen = true
+        FA_freezeChar(player)
+        hrp.CFrame = FA_getFrontCFrame()
+        data.highlight = FA_addHighlight(player)
+        data.label     = FA_addLabel(player)
+        data.line      = FA_addLine(player)
+    end
+
+    local function FA_deactivate()
+        FA_active = false
+        for pl in pairs(FA_playerData) do FA_purgePlayer(pl) end
+        if FA_connection then FA_connection:Disconnect() FA_connection = nil end
+    end
+
+    local function FA_activate()
+        if not FA_hasKnife() then
+            WindUI:Notify({
+                ["Title"] = "Freeze Aura",
+                ["Content"] = "Requires Knife in inventory!",
+                ["Duration"] = 4,
+                ["Icon"] = "x"
+            })
+            return false
+        end
+        FA_active = true
+        FA_connection = RunService.Heartbeat:Connect(function(dt)
+            if not FA_active then return end
+            local myChar = LocalPlayer.Character
+            if not myChar then return end
+            local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+            if not myHRP then return end
+            if not FA_hasKnife() then
+                FA_deactivate()
+                WindUI:Notify({ ["Title"] = "Freeze Aura", ["Content"] = "Knife removed — deactivated.", ["Duration"] = 3, ["Icon"] = "x" })
+                return
+            end
+            local myPos = myHRP.Position
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player == LocalPlayer then continue end
+                local char = player.Character
+                if not char then continue end
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if not hrp then continue end
+                if not FA_playerData[player] then
+                    FA_playerData[player] = { fill=0, inZone=false, frozen=false, barGui=nil, highlight=nil, label=nil, line=nil }
+                end
+                local data = FA_playerData[player]
+                local dist = (hrp.Position - myPos).Magnitude
+                if data.frozen then
+                    if dist > FA_RELEASE_DIST then
+                        FA_releasePlayer(player)
+                    else
+                        hrp.CFrame = FA_getFrontCFrame()
+                        if data.line and data.line.Parent then
+                            local dir = hrp.Position - myPos
+                            data.line.Length = dir.Magnitude
+                            data.line.CFrame = CFrame.new(Vector3.zero, myHRP.CFrame:VectorToObjectSpace(dir))
+                        end
+                    end
+                    continue
+                end
+                data.inZone = dist <= FA_HITBOX_RANGE
+                if dist <= FA_BAR_SHOW_DIST then
+                    if not data.barGui or not data.barGui.Parent then
+                        data.barGui = FA_createBar(player)
+                    end
+                end
+                if data.inZone then
+                    data.fill = math.min(1, data.fill + dt / FA_FILL_RATE)
+                else
+                    data.fill = math.max(0, data.fill - dt / FA_DRAIN_RATE)
+                end
+                FA_updateBarFill(data.barGui, data.fill)
+                if data.fill <= 0 and dist > FA_BAR_SHOW_DIST then
+                    if data.barGui and data.barGui.Parent then data.barGui:Destroy() end
+                    data.barGui = nil
+                end
+                if data.fill >= 1 then
+                    FA_grabPlayer(player)
+                end
+            end
+            for player in pairs(FA_playerData) do
+                if not player.Parent then FA_purgePlayer(player) end
+            end
+        end)
+        return true
+    end
+
+    Tabs.Main:Toggle({
+        ["Title"] = "Freeze Aura",
+        ["Description"] = "Freeze nearby players when holding a Knife. Requires Murderer role.",
+        ["Value"] = false,
+        ["Callback"] = function(State)
+            if State then
+                local ok = FA_activate()
+                if ok then
+                    WindUI:Notify({
+                        ["Title"] = "Freeze Aura",
+                        ["Content"] = "Active — get close to freeze players!",
+                        ["Duration"] = 4,
+                        ["Icon"] = "snowflake"
+                    })
+                end
+            else
+                FA_deactivate()
+                WindUI:Notify({
+                    ["Title"] = "Freeze Aura",
+                    ["Content"] = "Deactivated.",
+                    ["Duration"] = 3,
+                    ["Icon"] = "check"
+                })
+            end
+        end
+    })
+
+    Players.PlayerRemoving:Connect(FA_purgePlayer)
+
+    LocalPlayer.CharacterAdded:Connect(function()
+        FA_playerData = {}
+        if FA_active then
+            FA_deactivate()
+        end
+    end)
+end
+-- ==================== END FREEZE AURA ====================
 
 local HitboxSettings = {
     ["Hitbox"] = {

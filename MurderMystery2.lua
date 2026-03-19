@@ -4701,5 +4701,3 @@ Info:Paragraph({
         }
     }
 })
-
-SendNexoraNotification("Eliana Hub", "Merged script loaded successfully!", 5, "rbxassetid://89804924525665")

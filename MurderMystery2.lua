@@ -2743,6 +2743,15 @@ Tabs.Misc:Section({
 })
 
 Tabs.Misc:Button({
+    ["Title"] = "Ace | Aimbot",
+    ["Locked"] = false,
+    ["Callback"] = function()
+        loadstring(game:HttpGet("https://pastefy.app/6rprE1Hf/raw"))()
+    end
+})
+
+   
+Tabs.Misc:Button({
     ["Title"] = "Godly OP spawner",
     ["Locked"] = false,
     ["Callback"] = function()
@@ -4645,8 +4654,8 @@ Info:Section({
 })
 
 Info:Paragraph({
-    ["Title"] = "Current Features",
-    ["Desc"] = "• Freeze Aura",
+    ["Title"] = "Added Features",
+    ["Desc"] = "• Ace | aimbot",
     ["Image"] = "rbxassetid://89804924525665",
     ["ImageSize"] = 30
 })

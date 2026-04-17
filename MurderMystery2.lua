@@ -287,6 +287,7 @@ Tabs.Manager = MainWindow:Tab({
 
 MainWindow:SelectTab(7)
 
+do -- [scope]
 -- ==================== MANAGER TAB SETUP (from beta) ====================
 local SAVE_FILE = "ZCNathan_Layout_V31.json"
 local CreatedButtons = {}
@@ -373,6 +374,304 @@ local function SaveConfig()
 end
 
 local function LoadConfig()
+
+-- =============================================================================
+-- KEYBIND SYSTEM v2 — Direct Callback Dispatch (no :Fire() on signals)
+-- =============================================================================
+
+-- ── Step 1: Wipe stale keybind save so defaults are always correct ───────────
+local KEYBIND_FILE = "ElianaHub_Keybinds_V2.json"
+if isfile(KEYBIND_FILE) then
+    delfile(KEYBIND_FILE)
+end
+
+-- ── Step 2: Callback registry — populated automatically by createShape ────────
+-- ButtonCallbacks[btnName] = the raw function passed to createShape
+-- We monkey-patch createShape BEFORE buttons are registered.
+-- But since buttons are already created by now (after LoadConfig), we rebuild
+-- from CreatedButtons using a parallel table populated at create time.
+-- The original createShape stored callbacks via :Connect — we can't retrieve them.
+-- Solution: store callbacks in a global table DURING createShape calls.
+-- Since keybind block runs AFTER all createShapes, we use a second approach:
+-- Re-read the callback table that was built at createShape time.
+-- This requires patching createShape BEFORE the buttons are made.
+-- Since this block runs AFTER, we directly hardcode button→action mapping here
+-- using the same logic already in each button, wrapped in a dispatch table.
+
+-- ── Step 3: Direct action dispatch table ─────────────────────────────────────
+-- Each entry calls the same logic as the corresponding mobile button.
+-- This avoids :Fire() entirely.
+
+local ButtonActions = {}
+
+-- SHOOT
+ButtonActions["Shoot_Btn"] = function()
+    local Character = LocalPlayer.Character
+    local Backpack = LocalPlayer:FindFirstChild("Backpack")
+    if not Character or not Backpack then return end
+    local Gun = Backpack:FindFirstChild("Gun") or Character:FindFirstChild("Gun")
+    if not Gun then return end
+    local Murderer = nil
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            if plr.Backpack:FindFirstChild("Knife") or plr.Character:FindFirstChild("Knife") then
+                Murderer = plr; break
+            end
+        end
+    end
+    if not Murderer or not Murderer.Character then return end
+    local MyRoot = Character:FindFirstChild("HumanoidRootPart")
+    local TargetRoot = Murderer.Character:FindFirstChild("HumanoidRootPart")
+    local ShootRemote = Gun:FindFirstChild("Shoot")
+    if not (MyRoot and TargetRoot and ShootRemote) then return end
+    Gun.Parent = Character
+    task.wait()
+    ShootRemote:FireServer(MyRoot.CFrame, TargetRoot.CFrame + (TargetRoot.Velocity * 0.125))
+    task.wait()
+    Gun.Parent = Backpack
+end
+
+-- KILL ALL
+ButtonActions["KillAll_Btn"] = function()
+    local character = LocalPlayer.Character
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    if not character or not backpack then return end
+    local knife = character:FindFirstChild("Knife") or backpack:FindFirstChild("Knife")
+    if not knife then
+        WindUI:Notify({Title="Kill All", Content="You are not the Murderer", Icon="x"})
+        return
+    end
+    local myRoot = character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character:FindFirstChild("Humanoid")
+    if not (myRoot and humanoid) then return end
+    if knife.Parent == backpack then humanoid:EquipTool(knife); task.wait() end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+            local enemyRoot = plr.Character.HumanoidRootPart
+            enemyRoot.Anchored = true
+            enemyRoot.CFrame = myRoot.CFrame * CFrame.new(0, 0, -2)
+        end
+    end
+    local stab = knife:FindFirstChild("Stab")
+    if stab then stab:FireServer("Slash") end
+    task.wait(0.1)
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+            plr.Character.HumanoidRootPart.Anchored = false
+        end
+    end
+    if knife.Parent == character then knife.Parent = backpack end
+end
+
+-- GET GUN
+ButtonActions["Gun_Btn"] = function()
+    local character = LocalPlayer.Character
+    if not character then return end
+    local touchPart = character:FindFirstChild("LeftFoot")
+        or character:FindFirstChild("Left Leg")
+        or character:FindFirstChild("HumanoidRootPart")
+    if not touchPart then return end
+    local found = false
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v.Name == "GunDrop" then
+            firetouchinterest(touchPart, v, 0); task.wait(); firetouchinterest(touchPart, v, 1)
+            found = true; break
+        end
+    end
+    WindUI:Notify({Title="GUN", Content=found and "Gun acquired" or "No gun found", Icon=found and "check" or "x"})
+end
+
+-- INVISIBLE
+ButtonActions["Invisible_Btn"] = function()
+    -- calls the same ToggleInvisibility function defined above
+    ToggleInvisibility()
+end
+
+-- RUN
+ButtonActions["Run_Btn"] = function()
+    local character = LocalPlayer.Character
+    if character and character:FindFirstChild("Humanoid") then
+        local humanoid = character.Humanoid
+        humanoid.WalkSpeed = humanoid.WalkSpeed + 9
+        WindUI:Notify({Title="RUN", Content="Speed Activated", Icon="run"})
+        task.delay(5, function()
+            if humanoid and humanoid.Parent then
+                humanoid.WalkSpeed = humanoid.WalkSpeed - 9
+                WindUI:Notify({Title="RUN", Content="Speed reverted", Icon="run"})
+            end
+        end)
+    end
+end
+
+-- NINJA STEP
+ButtonActions["NinjaStep_Btn"] = function()
+    if getgenv()._NinjaToggle then
+        getgenv()._NinjaToggle()
+    end
+end
+
+-- GOD MODE
+ButtonActions["GodMode_Btn"] = function()
+    loadstring(game:HttpGet("https://pastefy.app/FHl36Zg1/raw"))("true")
+end
+
+-- AIM
+ButtonActions["Aim_Btn"] = function()
+    if getgenv()._AimToggle then getgenv()._AimToggle() end
+end
+
+-- ── Step 4: Keybind map (key name → button name) ─────────────────────────────
+-- These are the DEFAULT bindings. Edit here to change them permanently.
+local Keybinds = {
+    ["Z"] = "Shoot_Btn",
+    ["X"] = "KillAll_Btn",
+    ["C"] = "Gun_Btn",
+    ["V"] = "Invisible_Btn",
+    ["B"] = "Run_Btn",
+    ["N"] = "NinjaStep_Btn",
+    ["M"] = "GodMode_Btn",
+}
+
+-- Persist to file so Manager tab can optionally reload them
+writefile(KEYBIND_FILE, HttpService:JSONEncode(Keybinds))
+
+-- ── Step 5: PC auto-detection — hide all mobile buttons immediately ───────────
+local function IsPC()
+    return UserInputService.KeyboardEnabled
+end
+
+local PCMode = IsPC()
+
+-- Hide buttons right away if on PC
+if PCMode then
+    for _, btn in ipairs(CreatedButtons) do
+        btn.Visible = false
+    end
+end
+
+-- Watch for device change at runtime
+UserInputService:GetPropertyChangedSignal("KeyboardEnabled"):Connect(function()
+    PCMode = UserInputService.KeyboardEnabled
+    if PCMode then
+        for _, btn in ipairs(CreatedButtons) do
+            btn.Visible = false
+        end
+    end
+end)
+
+-- ── Step 6: Keyboard input handler ───────────────────────────────────────────
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+    if EditMode then return end
+    -- Skip R (WindUI hub toggle)
+    if input.KeyCode == Enum.KeyCode.R then return end
+
+    local keyName = input.KeyCode.Name  -- e.g. "Z", "B", "One"
+
+    local btnName = Keybinds[keyName]
+    if btnName then
+        local action = ButtonActions[btnName]
+        if action then
+            task.spawn(action)  -- run in new thread so errors don't break input loop
+        end
+    end
+end)
+
+-- ── Step 7: Manager tab — PC Mode toggle & keybind info ──────────────────────
+Tabs.Manager:Divider()
+Tabs.Manager:Section({ ["Title"] = "PC Keybinds" })
+
+Tabs.Manager:Paragraph({
+    ["Title"] = "Default Binds",
+    ["Desc"] = "Z=Shoot  X=KillAll  C=Gun  V=Invisible  B=Run  N=NinjaStep  M=GodMode",
+})
+
+Tabs.Manager:Toggle({
+    ["Title"] = "Show Mobile Buttons (disable on PC)",
+    ["Value"] = not PCMode,
+    ["Callback"] = function(v)
+        for _, btn in ipairs(CreatedButtons) do
+            btn.Visible = v
+        end
+    end
+})
+
+-- =============================================================================
+-- KEYBIND SYSTEM v2 LOADED
+-- =============================================================================
+-- =============================================================================
+-- BETTER RIGHT-SIDE KEYBIND LIST - "Shoot (Z)" Style
+-- =============================================================================
+
+local KeybindList = Instance.new("ScreenGui")
+KeybindList.Name = "RightKeybindList"
+KeybindList.ResetOnSpawn = false
+KeybindList.DisplayOrder = 48
+KeybindList.Parent = cloneref(LocalPlayer:WaitForChild("PlayerGui"))
+
+local Container = Instance.new("Frame")
+Container.Size = UDim2.new(0, 190, 0, 360)
+Container.Position = UDim2.new(1, -210, 0.5, -180)   -- Right side, centered
+Container.BackgroundTransparency = 1
+Container.Parent = KeybindList
+
+local Layout = Instance.new("UIListLayout", Container)
+Layout.SortOrder = Enum.SortOrder.LayoutOrder
+Layout.Padding = UDim.new(0, 9)
+Layout.VerticalAlignment = Enum.VerticalAlignment.Center
+
+local function CreateLine(action, key)
+    local line = Instance.new("TextLabel")
+    line.Size = UDim2.new(1, 0, 0, 26)
+    line.BackgroundTransparency = 1
+    line.Text = action .. "  (" .. key .. ")"
+    line.TextColor3 = Color3.fromRGB(245, 245, 245)
+    line.Font = Enum.Font.GothamSemibold
+    line.TextSize = 19
+    line.TextXAlignment = Enum.TextXAlignment.Right
+    line.TextStrokeTransparency = 0.75
+    line.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    line.Parent = Container
+
+    -- Soft premium outline with moving gradient
+    local stroke = Instance.new("UIStroke", line)
+    stroke.Thickness = 1.4
+    stroke.Transparency = 0.3
+    stroke.Color = Color3.fromRGB(180, 80, 255)
+
+    local grad = Instance.new("UIGradient", stroke)
+    grad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0,   Color3.fromRGB(200, 100, 255)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 180, 255)),
+        ColorSequenceKeypoint.new(1,   Color3.fromRGB(138, 43, 226))
+    })
+
+    RunService.RenderStepped:Connect(function(dt)
+        grad.Rotation = (grad.Rotation + 85 * dt) % 360
+    end)
+
+    return line
+end
+
+-- Add your lines (Action first, then key)
+CreateLine("Shoot", "Z")
+CreateLine("Kill All", "X")
+CreateLine("Get Gun", "C")
+CreateLine("Invisible", "V")
+CreateLine("Run", "B")
+CreateLine("Ninja Step", "N")
+CreateLine("God Mode", "M")
+
+-- Toggle in Manager tab
+Tabs.Manager:Toggle({
+    ["Title"] = "Show Right Side Keybind List",
+    ["Value"] = true,
+    ["Callback"] = function(v)
+        Container.Visible = v
+    end
+})
+
     if isfile(SAVE_FILE) then
         local success, data = pcall(function() return HttpService:JSONDecode(readfile(SAVE_FILE)) end)
         if success then
@@ -531,32 +830,23 @@ local XRayEnabled = false
 
 
 -- Aimbot Button
+getgenv()._AimToggle = function()
+    AimbotActive = not AimbotActive
+    if AimbotActive then
+        StartAimbot()
+        WindUI:Notify({Title = "AIMBOT", Content = "Enabled", Icon = "target"})
+    else
+        if AimbotConnection then AimbotConnection:Disconnect(); AimbotConnection = nil end
+        WindUI:Notify({Title = "AIMBOT", Content = "Disabled", Icon = "target"})
+    end
+end
+
 createShape(
     "Aim_Btn",
     UDim2.new(0.5, 0, 0.85, 0),
     "AIM",
     function()
-        AimbotActive = not AimbotActive
-
-        if AimbotActive then
-            StartAimbot()
-            WindUI:Notify({
-                Title = "AIMBOT",
-                Content = "Enabled",
-                Icon = "target"
-            })
-        else
-            if AimbotConnection then
-                AimbotConnection:Disconnect()
-                AimbotConnection = nil
-            end
-
-            WindUI:Notify({
-                Title = "AIMBOT",
-                Content = "Disabled",
-                Icon = "target"
-            })
-        end
+        getgenv()._AimToggle()
     end
 )
 
@@ -649,26 +939,28 @@ do
     LocalPlayer.CharacterAdded:Connect(function(c) task.spawn(setupNinja, c) end)
 
     -- Create Quick Button
+    -- Expose toggle function to keybind system via getgenv
+    getgenv()._NinjaToggle = function()
+        NinjaEnabled = not NinjaEnabled
+        for _, b in ipairs(CreatedButtons) do
+            if b.Name == "NinjaStep_Btn" then
+                b.Text = NinjaEnabled and "NINJA: ON" or "NINJA: OFF"
+                break
+            end
+        end
+        WindUI:Notify({
+            Title = "Ninja Step",
+            Content = NinjaEnabled and "Active" or "Inactive",
+            Duration = 2
+        })
+    end
+
     createShape(
         "NinjaStep_Btn", 
         UDim2.new(0.5, 0, 0.5, 0), 
         "NINJA: OFF", 
         function()
-            NinjaEnabled = not NinjaEnabled
-            
-            -- Safe update for the Hub's button list
-            for _, b in ipairs(CreatedButtons) do
-                if b.Name == "NinjaStep_Btn" then
-                    b.Text = NinjaEnabled and "NINJA: ON" or "NINJA: OFF"
-                    break
-                end
-            end
-
-            WindUI:Notify({
-                Title = "Ninja Step",
-                Content = NinjaEnabled and "Active" or "Inactive",
-                Duration = 2
-            })
+            getgenv()._NinjaToggle()
         end
     )
 end
@@ -1116,6 +1408,8 @@ end)
 
 LoadConfig()
 
+end -- [scope]
+do -- [scope]
 --- ===============MAIN TAB========================
 
 Tabs.Main:Section({
@@ -2678,33 +2972,6 @@ local function ToggleSpeedBypass(State)
 end
 
 Tabs.Main:Toggle({
-    ["Title"] = "Speed (V Key On/Off)",
-    ["Value"] = false,
-    ["Callback"] = ToggleSpeedBypass
-})
-
-Tabs.Main:Slider({
-    ["Title"] = "Speed Boost Value",
-    ["step"] = 1,
-    ["Value"] = {
-        ["Min"] = 1,
-        ["Max"] = 100,
-        ["Default"] = 9
-    },
-    ["Callback"] = function(Value)
-        speedValue = Value
-    end
-})
-
-UserInputService.InputBegan:Connect(function(Input, GameProcessed)
-    if Input.KeyCode == Enum.KeyCode.V and not GameProcessed then
-        ToggleSpeedBypass(not speedToggle)
-    end
-end)
-
-local jumpValue = 200
-
-Tabs.Main:Toggle({
     ["Title"] = "Jump",
     ["Value"] = false,
     ["Callback"] = function(State)
@@ -2735,6 +3002,8 @@ Tabs.Main:Slider({
     end
 })
 
+end -- [scope]
+do -- [scope]
 --- ========MISC TAB=============================
 
 Tabs.Misc:Section({
@@ -2890,6 +3159,8 @@ Tabs.Misc:Button({
     end
 })
 
+end -- [scope]
+do -- [scope]
 --- =============ESP TAB==========================
 -- PASTE THIS BLOCK to replace the old ESP section
 -- The do...end wrapper fixes the "out of registers" error
@@ -3508,6 +3779,8 @@ Tabs.ESP:Button({
     end
 })
 
+end -- [scope]
+do -- [scope]
 --- ===========FARM TAB===========================
 
 Tabs.Farm:Section({
@@ -3720,6 +3993,8 @@ Tabs.Farm:Button({
     end
 })
 
+end -- [scope]
+do -- [scope]
 --- =========TELEPORTATION TAB===================
 
 Tabs.Place:Button({
@@ -3789,6 +4064,8 @@ Tabs.Place:Button({
     end
 })
 
+end -- [scope]
+do -- [scope]
 --- ============FLING TAB========================
 
 -- miniFling function (from beta script)
@@ -4644,6 +4921,8 @@ Tabs.Fling:Slider({
     end
 })
 
+end -- [scope]
+do -- [scope]
 --- ========INFO TAB==============================
 
 local Info = Tabs.Info
@@ -4710,3 +4989,5 @@ Info:Paragraph({
         }
     }
 })
+
+end -- [scope]

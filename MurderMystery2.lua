@@ -598,10 +598,7 @@ Tabs.Manager:Toggle({
 })
 
 -- =============================================================================
--- KEYBIND SYSTEM v2 LOADED
--- =============================================================================
--- =============================================================================
--- BETTER RIGHT-SIDE KEYBIND LIST - "Shoot (Z)" Style
+-- RIGHT-SIDE KEYBIND LIST - PC ONLY (Hidden on Mobile)
 -- =============================================================================
 
 local KeybindList = Instance.new("ScreenGui")
@@ -612,8 +609,9 @@ KeybindList.Parent = cloneref(LocalPlayer:WaitForChild("PlayerGui"))
 
 local Container = Instance.new("Frame")
 Container.Size = UDim2.new(0, 190, 0, 360)
-Container.Position = UDim2.new(1, -210, 0.5, -180)   -- Right side, centered
+Container.Position = UDim2.new(1, -210, 0.5, -180)
 Container.BackgroundTransparency = 1
+Container.Visible = false   -- Start hidden
 Container.Parent = KeybindList
 
 local Layout = Instance.new("UIListLayout", Container)
@@ -634,7 +632,6 @@ local function CreateLine(action, key)
     line.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     line.Parent = Container
 
-    -- Soft premium outline with moving gradient
     local stroke = Instance.new("UIStroke", line)
     stroke.Thickness = 1.4
     stroke.Transparency = 0.3
@@ -650,11 +647,9 @@ local function CreateLine(action, key)
     RunService.RenderStepped:Connect(function(dt)
         grad.Rotation = (grad.Rotation + 85 * dt) % 360
     end)
-
-    return line
 end
 
--- Add your lines (Action first, then key)
+-- Lines
 CreateLine("Shoot", "Z")
 CreateLine("Kill All", "X")
 CreateLine("Get Gun", "C")
@@ -663,12 +658,27 @@ CreateLine("Run", "B")
 CreateLine("Ninja Step", "N")
 CreateLine("God Mode", "M")
 
--- Toggle in Manager tab
+-- ==================== PC DETECTION & VISIBILITY ====================
+
+local function UpdateVisibility()
+    local isPC = UserInputService.KeyboardEnabled
+    Container.Visible = isPC
+end
+
+-- Initial check
+UpdateVisibility()
+
+-- Update when device changes (e.g. someone plugs in keyboard)
+UserInputService:GetPropertyChangedSignal("KeyboardEnabled"):Connect(UpdateVisibility)
+
+-- Toggle in Manager tab (only affects PC)
 Tabs.Manager:Toggle({
-    ["Title"] = "Show Right Side Keybind List",
+    ["Title"] = "Show Right Side Keybind List (PC Only)",
     ["Value"] = true,
     ["Callback"] = function(v)
-        Container.Visible = v
+        if UserInputService.KeyboardEnabled then
+            Container.Visible = v
+        end
     end
 })
 
@@ -4934,7 +4944,7 @@ Info:Section({
 
 Info:Paragraph({
     ["Title"] = "Added Features",
-    ["Desc"] = "• Ace | aimbot",
+    ["Desc"] = "• Quick Buttons For PC",
     ["Image"] = "rbxassetid://89804924525665",
     ["ImageSize"] = 30
 })

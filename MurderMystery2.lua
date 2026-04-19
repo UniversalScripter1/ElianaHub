@@ -16,6 +16,9 @@ local TextChatService = game:GetService("TextChatService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VirtualUser = game:GetService("VirtualUser")
 local TeleportService = game:GetService("TeleportService")
+-- ==================== GLOBAL SETTINGS ====================
+getgenv().DisableUnequipAfterShoot = getgenv().DisableUnequipAfterShoot or false
+getgenv().ShowAimLaser = getgenv().ShowAimLaser or false
 
 local cloneref = (cloneref or clonereference or function(i) return i end)
 
@@ -411,26 +414,48 @@ ButtonActions["Shoot_Btn"] = function()
     local Character = LocalPlayer.Character
     local Backpack = LocalPlayer:FindFirstChild("Backpack")
     if not Character or not Backpack then return end
+
     local Gun = Backpack:FindFirstChild("Gun") or Character:FindFirstChild("Gun")
     if not Gun then return end
+
+    local ShootRemote = Gun:FindFirstChild("Shoot")
+    if not ShootRemote then return end
+
+    local MyRoot = Character:FindFirstChild("HumanoidRootPart")
+    if not MyRoot then return end
+
+    -- Find Murderer (slightly optimized)
     local Murderer = nil
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer and plr.Character then
             if plr.Backpack:FindFirstChild("Knife") or plr.Character:FindFirstChild("Knife") then
-                Murderer = plr; break
+                Murderer = plr
+                break
             end
         end
     end
     if not Murderer or not Murderer.Character then return end
-    local MyRoot = Character:FindFirstChild("HumanoidRootPart")
+
     local TargetRoot = Murderer.Character:FindFirstChild("HumanoidRootPart")
-    local ShootRemote = Gun:FindFirstChild("Shoot")
-    if not (MyRoot and TargetRoot and ShootRemote) then return end
-    Gun.Parent = Character
-    task.wait()
-    ShootRemote:FireServer(MyRoot.CFrame, TargetRoot.CFrame + (TargetRoot.Velocity * 0.125))
-    task.wait()
-    Gun.Parent = Backpack
+    if not TargetRoot then return end
+
+    -- Equip
+    local wasInBackpack = Gun.Parent == Backpack
+    if wasInBackpack then
+        Gun.Parent = Character
+        task.defer(function()  -- tiny defer to reduce hitches
+            if ShootRemote and ShootRemote.Parent then
+                local predicted = TargetRoot.CFrame + (TargetRoot.Velocity * 0.125)
+                ShootRemote:FireServer(MyRoot.CFrame, predicted)
+            end
+
+            -- Unequip only if toggle is OFF
+            if not getgenv().DisableUnequipAfterShoot and Gun.Parent == Character then
+                task.wait(0.03)  -- very short delay for reliability
+                Gun.Parent = Backpack
+            end
+        end)
+    end
 end
 
 -- KILL ALL
@@ -750,48 +775,67 @@ local function createShape(name, pos, text, callback)
     return btn
 end
 
--- Shoot Function
+-- ==================== FIXED SHOOT BUTTON (Works while already holding gun) ====================
 createShape(
     "Shoot_Btn",
     UDim2.new(0.4, 0, 0.4, 0),
     "SHOOT",
     function()
-
         local Character = LocalPlayer.Character
         local Backpack = LocalPlayer:FindFirstChild("Backpack")
         if not Character or not Backpack then return end
 
         local Gun = Backpack:FindFirstChild("Gun") or Character:FindFirstChild("Gun")
-        if not Gun then return end
+        if not Gun then 
+            WindUI:Notify({Title = "Shoot", Content = "No Gun found", Icon = "x"})
+            return 
+        end
 
+        local ShootRemote = Gun:FindFirstChild("Shoot")
+        if not ShootRemote then return end
+
+        local MyRoot = Character:FindFirstChild("HumanoidRootPart")
+        if not MyRoot then return end
+
+        -- Find Murderer
         local Murderer = nil
         for _, plr in ipairs(Players:GetPlayers()) do
             if plr ~= LocalPlayer and plr.Character then
-                if plr.Backpack:FindFirstChild("Knife")
-                or plr.Character:FindFirstChild("Knife") then
+                if plr.Backpack:FindFirstChild("Knife") or plr.Character:FindFirstChild("Knife") then
                     Murderer = plr
                     break
                 end
             end
         end
-        if not Murderer or not Murderer.Character then return end
+        if not Murderer or not Murderer.Character then 
+            WindUI:Notify({Title = "Shoot", Content = "Murderer not found", Icon = "x"})
+            return 
+        end
 
-        local MyRoot = Character:FindFirstChild("HumanoidRootPart")
         local TargetRoot = Murderer.Character:FindFirstChild("HumanoidRootPart")
-        local ShootRemote = Gun:FindFirstChild("Shoot")
-        if not (MyRoot and TargetRoot and ShootRemote) then return end
+        if not TargetRoot then return end
 
-        Gun.Parent = Character
-        task.wait()
+        -- Equip if not already equipped
+        local wasInBackpack = Gun.Parent == Backpack
+        if wasInBackpack then
+            Gun.Parent = Character
+        end
 
-        local PredictedPos =
-            TargetRoot.CFrame + (TargetRoot.Velocity * 0.125)
+        -- Fire the shot (works whether we just equipped or already holding)
+        task.defer(function()
+            if ShootRemote and ShootRemote.Parent then
+                local predicted = TargetRoot.CFrame + (TargetRoot.Velocity * 0.125)
+                ShootRemote:FireServer(MyRoot.CFrame, predicted)
+            end
 
-        ShootRemote:FireServer(MyRoot.CFrame, PredictedPos)
-
-        task.wait()
-        Gun.Parent = Backpack
-
+            -- Only unequip if toggle is OFF AND we were the one who equipped it
+            if not getgenv().DisableUnequipAfterShoot and wasInBackpack and Gun.Parent == Character then
+                task.wait(0.04)
+                if Gun.Parent == Character then
+                    Gun.Parent = Backpack
+                end
+            end
+        end)
     end
 )
 
@@ -1184,6 +1228,38 @@ Tabs.Manager:Button({
     ["Callback"] = SaveConfig
 })
 
+Tabs.Manager:Section({ ["Title"] = "Shoot Settings" })
+
+-- Ensure the variable exists
+getgenv().DisableUnequipAfterShoot = getgenv().DisableUnequipAfterShoot or false
+
+Tabs.Manager:Toggle({
+    ["Title"] = "Disable Auto Unequip After Shoot",
+    ["Description"] = "Keep the gun equipped after shooting (good for combos)",
+    ["Value"] = getgenv().DisableUnequipAfterShoot,
+    ["Callback"] = function(v)
+        getgenv().DisableUnequipAfterShoot = v
+        WindUI:Notify({
+            Title = "Shoot Setting",
+            Content = v and "Gun stays equipped" or "Gun unequips after shot",
+            Duration = 2
+        })
+    end
+})
+
+Tabs.Manager:Toggle({
+    ["Title"] = "Show Aim Laser",
+    ["Description"] = "Visual beam showing where your shot will land (Green = Murderer)",
+    ["Value"] = getgenv().ShowAimLaser,
+    ["Callback"] = function(v)
+        getgenv().ShowAimLaser = v
+        WindUI:Notify({
+            Title = "Aim Laser",
+            Content = v and "Laser enabled" or "Laser disabled",
+            Duration = 2
+        })
+    end
+})
 -- ==================== MAC-STYLE EDIT WIDGET ====================
 local EditGui = Instance.new("ScreenGui")
 EditGui.Name = "MacEditWidget"
@@ -1490,7 +1566,166 @@ end)
 
 LoadConfig()
 
--- ==================== SIDE PANEL - TEXT FIXED ====================
+-- ==================== AIM LASER SYSTEM v3 (Auto Gun Barrel + Fixed Accuracy) ====================
+local AimLaserBeam = nil
+local LaserConnection = nil
+
+local function GetGunBarrelAttachment(gun)
+    if not gun then return nil end
+    
+    -- Try common muzzle/attachment names first
+    local att = gun:FindFirstChild("Muzzle") 
+             or gun:FindFirstChild("Barrel") 
+             or gun:FindFirstChild("Front") 
+             or gun:FindFirstChildWhichIsA("Attachment")
+    
+    if att then return att end
+
+    -- Fallback: create attachment at the front of the gun (auto position)
+    local newAtt = Instance.new("Attachment", gun)
+    newAtt.Name = "AutoLaserStart"
+    
+    -- Auto-detect barrel direction (most guns point forward on Z axis)
+    newAtt.Position = Vector3.new(0, 0, -2.8)   -- Adjust this number if needed (-2.5 to -3.5)
+    return newAtt
+end
+
+local function CreateAimLaser()
+    if AimLaserBeam then 
+        AimLaserBeam:Destroy() 
+        AimLaserBeam = nil 
+    end
+
+    local character = LocalPlayer.Character
+    if not character then return end
+
+    local gun = character:FindFirstChild("Gun")
+    if not gun then return end
+
+    local startAtt = GetGunBarrelAttachment(gun)
+    if not startAtt then return end
+
+    local endAtt = gun:FindFirstChild("LaserEnd")
+    if not endAtt then
+        endAtt = Instance.new("Attachment", gun)
+        endAtt.Name = "LaserEnd"
+    end
+
+    AimLaserBeam = Instance.new("Beam")
+    AimLaserBeam.Name = "ElianaAimLaser"
+    AimLaserBeam.FaceCamera = true
+    AimLaserBeam.LightEmission = 1
+    AimLaserBeam.Transparency = NumberSequence.new(0.1)
+    AimLaserBeam.Width0 = 0.07
+    AimLaserBeam.Width1 = 0.07
+    AimLaserBeam.Parent = gun
+
+    AimLaserBeam.Attachment0 = startAtt
+    AimLaserBeam.Attachment1 = endAtt
+    AimLaserBeam.Enabled = false
+end
+
+local function HasGun()
+    local char = LocalPlayer.Character
+    local bp = LocalPlayer:FindFirstChild("Backpack")
+    if not char or not bp then return false end
+    return bp:FindFirstChild("Gun") or char:FindFirstChild("Gun")
+end
+
+local function UpdateAimLaser()
+    if not getgenv().ShowAimLaser then
+        if AimLaserBeam then AimLaserBeam.Enabled = false end
+        return
+    end
+
+    if not HasGun() then
+        if AimLaserBeam then AimLaserBeam.Enabled = false end
+        return
+    end
+
+    -- Recreate if gun changed
+    local gun = LocalPlayer.Character:FindFirstChild("Gun")
+    if not gun or not AimLaserBeam or AimLaserBeam.Parent ~= gun then
+        CreateAimLaser()
+        return
+    end
+
+    local character = LocalPlayer.Character
+    if not character then return end
+
+    -- Find murderer
+    local murderer = nil
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            if plr.Backpack:FindFirstChild("Knife") or plr.Character:FindFirstChild("Knife") then
+                murderer = plr
+                break
+            end
+        end
+    end
+
+    if not murderer or not murderer.Character or not murderer.Character:FindFirstChild("HumanoidRootPart") then
+        if AimLaserBeam then
+            AimLaserBeam.Color = ColorSequence.new(Color3.fromRGB(255, 60, 60)) -- Red
+            AimLaserBeam.Enabled = true
+        end
+        return
+    end
+
+    local targetRoot = murderer.Character.HumanoidRootPart
+
+    -- Use same prediction as the actual shoot function
+    local predictedPos = targetRoot.Position + (targetRoot.Velocity * 0.125)
+
+    -- Update beam end
+    if AimLaserBeam.Attachment1 then
+        AimLaserBeam.Attachment1.WorldPosition = predictedPos
+    end
+    AimLaserBeam.Enabled = true
+
+    -- Accurate occlusion check from gun barrel
+    local startPos = AimLaserBeam.Attachment0.WorldPosition
+    local direction = (predictedPos - startPos).Unit * 350
+
+    local rayParams = RaycastParams.new()
+    rayParams.FilterDescendantsInstances = {character}
+    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+
+    local rayResult = workspace:Raycast(startPos, direction, rayParams)
+
+    if rayResult and rayResult.Instance then
+        local hitModel = rayResult.Instance:FindFirstAncestorWhichIsA("Model")
+        if hitModel then
+            local hitPlayer = Players:GetPlayerFromCharacter(hitModel)
+            if hitPlayer and hitPlayer ~= murderer then
+                AimLaserBeam.Color = ColorSequence.new(Color3.fromRGB(255, 165, 0)) -- Orange
+                return
+            end
+        end
+    end
+
+    -- Clean aim at murderer
+    AimLaserBeam.Color = ColorSequence.new(Color3.fromRGB(0, 255, 100)) -- Green
+end
+
+-- Connection
+if LaserConnection then LaserConnection:Disconnect() end
+LaserConnection = RunService.RenderStepped:Connect(UpdateAimLaser)
+
+-- Respawn handling
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.4)
+    if AimLaserBeam then 
+        AimLaserBeam:Destroy() 
+        AimLaserBeam = nil 
+    end
+    CreateAimLaser()
+end)
+
+-- Initial
+if LocalPlayer.Character then
+    task.spawn(CreateAimLaser)
+end
 
 local SP_OPEN = false
 
@@ -1708,7 +1943,7 @@ RunService.RenderStepped:Connect(function()
     SPUnhideAll.BackgroundColor3 = hiddenCount == 0 and Color3.fromRGB(160,160,160) or Color3.fromRGB(34,139,34)
 end)
 
--- ==================== END SIDE PANEL ====================
+-- ==================== END SIDE PANEL ==================== 
 
 end -- [scope]
 do -- [scope]
@@ -3823,7 +4058,7 @@ do -- <<<< DO BLOCK: isolates all ESP locals from the top-level scope
             ESPConfig.ShowTexts     = false
             ESPConfig.ShowHighlight = false
             for _, v in pairs(Selected) do
-                if v == "Lines"     then ESPConfig.ShowLines     = true end
+                if v == "Lines"     then ESPConfig.ShowLines     = false end
                 if v == "Texts"     then ESPConfig.ShowTexts     = true end
                 if v == "Highlight" then ESPConfig.ShowHighlight = true end
             end

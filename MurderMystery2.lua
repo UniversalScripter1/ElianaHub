@@ -178,7 +178,7 @@ SendNexoraNotification("Eliana Hub", "Toggle Keybind: ( R )", 30, "rbxassetid://
 local MainWindow = WindUI:CreateWindow({
     ["Title"] = "Eliana Hub",
     ["Icon"] = "zap",
-    ["Author"] = "OP KEYLESS",
+    ["Author"] = "FREE-MIUM SCRIPT",
     ["Folder"] = "Project Nexora",
     ["Size"] = UDim2.fromOffset(500, 350),
     ["Transparent"] = getgenv().TransparencyEnabled,
@@ -291,6 +291,7 @@ do -- [scope]
 -- ==================== MANAGER TAB SETUP (from beta) ====================
 local SAVE_FILE = "ZCNathan_Layout_V31.json"
 local CreatedButtons = {}
+local HiddenButtons = {} -- tracks which buttons the user has hidden
 local EditMode = false
 local SelectedButton = nil
 local MASTER_VIOLET = Color3.fromRGB(138, 43, 226)
@@ -367,6 +368,7 @@ local function SaveConfig()
             Transparency = btn.BackgroundTransparency,
             CornerScale = corner.Scale,
             CornerOffset = corner.Offset,
+            Hidden = HiddenButtons[btn.Name] or false,
         }
     end
     writefile(SAVE_FILE, HttpService:JSONEncode(fullData))
@@ -694,6 +696,11 @@ Tabs.Manager:Toggle({
                     btn.TextTransparency = d.Transparency
                     btn.UIStroke.Transparency = d.Transparency
                     btn.UICorner.CornerRadius = UDim.new(d.CornerScale or 1, d.CornerOffset or 0)
+                    -- Restore hidden state
+                    if d.Hidden then
+                        HiddenButtons[btn.Name] = true
+                        btn.Visible = false
+                    end
                 end
             end
         end
@@ -1151,6 +1158,8 @@ Tabs.Manager:Toggle({
     ["Value"] = false,
     ["Callback"] = function(v)
         for _, btn in ipairs(CreatedButtons) do
+            -- Never show buttons the user has hidden
+            if v and HiddenButtons[btn.Name] then continue end
             btn.Visible = v
         end
     end
@@ -1184,7 +1193,7 @@ EditGui.Parent = cloneref(LocalPlayer:WaitForChild("PlayerGui"))
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 240, 0, 245)
+MainFrame.Size = UDim2.new(0, 240, 0, 295)
 MainFrame.Position = UDim2.new(0.5, -120, 0.5, -122)
 MainFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 MainFrame.Active = true
@@ -1367,6 +1376,66 @@ ShapeBtn.MouseButton1Click:Connect(function()
     Dropdown.Size = Dropdown.Visible and UDim2.new(1, 0, 0, 125) or UDim2.new(1, 0, 0, 0)
 end)
 
+-- ── HIDE/SHOW ROW ────────────────────────────────────────────────────────────
+-- A full-width button that hides or shows the currently selected quick button.
+-- State is saved to SAVE_FILE so it persists across sessions.
+
+local HideRowLabel = Instance.new("TextLabel", Content)
+HideRowLabel.Size = UDim2.new(1, -24, 0, 10)
+HideRowLabel.Position = UDim2.new(0, 12, 1, -88)
+HideRowLabel.BackgroundTransparency = 1
+HideRowLabel.Text = "VISIBILITY"
+HideRowLabel.TextColor3 = Color3.fromRGB(40, 40, 40)
+HideRowLabel.Font = Enum.Font.GothamBold
+HideRowLabel.TextSize = 10
+HideRowLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+local HideBtn = Instance.new("TextButton", Content)
+HideBtn.Size = UDim2.new(1, -24, 0, 26)
+HideBtn.Position = UDim2.new(0, 12, 1, -74)
+HideBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+HideBtn.Text = "HIDE THIS BUTTON"
+HideBtn.TextColor3 = Color3.new(1, 1, 1)
+HideBtn.Font = Enum.Font.GothamBold
+HideBtn.TextSize = 11
+Instance.new("UICorner", HideBtn).CornerRadius = UDim.new(0, 6)
+
+-- Updates the HideBtn appearance based on current selected button's hidden state
+local function RefreshHideBtn()
+    if not SelectedButton then return end
+    local isHidden = HiddenButtons[SelectedButton.Name]
+    if isHidden then
+        HideBtn.Text = "SHOW THIS BUTTON"
+        HideBtn.BackgroundColor3 = Color3.fromRGB(34, 139, 34)
+    else
+        HideBtn.Text = "HIDE THIS BUTTON"
+        HideBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    end
+end
+
+HideBtn.MouseButton1Click:Connect(function()
+    if not SelectedButton then return end
+    local name = SelectedButton.Name
+    if HiddenButtons[name] then
+        -- Unhide: make visible again but only if master toggle allows it
+        HiddenButtons[name] = nil
+        SelectedButton.Visible = true
+        HideBtn.Text = "HIDE THIS BUTTON"
+        HideBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        WindUI:Notify({Title = "Quick Buttons", Content = name .. " is now visible", Icon = "eye", Duration = 2})
+    else
+        -- Hide: immediately invisible
+        HiddenButtons[name] = true
+        SelectedButton.Visible = false
+        HideBtn.Text = "SHOW THIS BUTTON"
+        HideBtn.BackgroundColor3 = Color3.fromRGB(34, 139, 34)
+        WindUI:Notify({Title = "Quick Buttons", Content = name .. " hidden", Icon = "eye-off", Duration = 2})
+    end
+    SaveConfig()
+end)
+
+-- ── BOTTOM ROW (Reset / Exit / Save) ─────────────────────────────────────────
+
 local ResetBtn = Instance.new("TextButton", Content)
 ResetBtn.Size = UDim2.new(0, 65, 0, 26)
 ResetBtn.Position = UDim2.new(0, 12, 1, -35)
@@ -1413,10 +1482,233 @@ SaveBtn.MouseButton1Click:Connect(SaveConfig)
 
 RunService.Heartbeat:Connect(function()
     MainFrame.Visible = EditMode and SelectedButton ~= nil
-    if SelectedButton then NameLabel.Text = SelectedButton.Name end
+    if SelectedButton then
+        NameLabel.Text = SelectedButton.Name
+        RefreshHideBtn()
+    end
 end)
 
 LoadConfig()
+
+-- ==================== SIDE PANEL - TEXT FIXED ====================
+
+local SP_OPEN = false
+
+-- Toggle tab ">"
+local ToggleTab = Instance.new("TextButton")
+ToggleTab.Name = "SPToggleTab"
+ToggleTab.Size = UDim2.new(0, 22, 0, 48)
+ToggleTab.BackgroundColor3 = MASTER_VIOLET
+ToggleTab.Text = ">"
+ToggleTab.TextColor3 = Color3.new(1, 1, 1)
+ToggleTab.Font = Enum.Font.GothamBold
+ToggleTab.TextSize = 14
+ToggleTab.Visible = false
+ToggleTab.ZIndex = 60
+ToggleTab.Parent = EditGui
+Instance.new("UICorner", ToggleTab).CornerRadius = UDim.new(0, 8)
+
+-- Side Panel
+local SidePanel = Instance.new("Frame")
+SidePanel.Name = "UnhideSidePanel"
+SidePanel.Size = UDim2.new(0, 220, 0, 295)
+SidePanel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+SidePanel.BorderSizePixel = 0
+SidePanel.Visible = false
+SidePanel.ZIndex = 50
+SidePanel.Parent = EditGui
+Instance.new("UICorner", SidePanel).CornerRadius = UDim.new(0, 12)
+
+local SPStroke = Instance.new("UIStroke", SidePanel)
+SPStroke.Thickness = 1.5
+SPStroke.Color = Color3.fromRGB(180, 180, 180)
+
+-- Header
+local SPHeader = Instance.new("Frame", SidePanel)
+SPHeader.Size = UDim2.new(1, 0, 0, 36)
+SPHeader.BackgroundColor3 = MASTER_VIOLET
+SPHeader.BorderSizePixel = 0
+Instance.new("UICorner", SPHeader).CornerRadius = UDim.new(0, 12)
+
+local SPTitle = Instance.new("TextLabel", SPHeader)
+SPTitle.Size = UDim2.new(1, -16, 1, 0)
+SPTitle.Position = UDim2.new(0, 16, 0, 0)
+SPTitle.BackgroundTransparency = 1
+SPTitle.Text = "HIDDEN BUTTONS"
+SPTitle.TextColor3 = Color3.new(1, 1, 1)   -- White on purple header
+SPTitle.Font = Enum.Font.GothamBold
+SPTitle.TextSize = 13
+SPTitle.TextXAlignment = Enum.TextXAlignment.Left
+SPTitle.ZIndex = 51
+
+-- Collapse tab "<"
+local CollapseTab = Instance.new("TextButton", SidePanel)
+CollapseTab.Size = UDim2.new(0, 22, 0, 48)
+CollapseTab.Position = UDim2.new(1, 0, 0.5, -24)
+CollapseTab.BackgroundColor3 = MASTER_VIOLET
+CollapseTab.Text = "<"
+CollapseTab.TextColor3 = Color3.new(1, 1, 1)
+CollapseTab.Font = Enum.Font.GothamBold
+CollapseTab.TextSize = 14
+CollapseTab.ZIndex = 61
+Instance.new("UICorner", CollapseTab).CornerRadius = UDim.new(0, 8)
+
+-- ScrollingFrame
+local SPScroll = Instance.new("ScrollingFrame", SidePanel)
+SPScroll.Size = UDim2.new(1, -16, 1, -96)
+SPScroll.Position = UDim2.new(0, 8, 0, 40)
+SPScroll.BackgroundTransparency = 1
+SPScroll.ScrollBarThickness = 5
+SPScroll.ScrollBarImageColor3 = MASTER_VIOLET
+SPScroll.ZIndex = 51
+
+local SPLayout = Instance.new("UIListLayout", SPScroll)
+SPLayout.SortOrder = Enum.SortOrder.LayoutOrder
+SPLayout.Padding = UDim.new(0, 8)
+
+local SPEmpty = Instance.new("TextLabel", SPScroll)
+SPEmpty.Size = UDim2.new(1, -20, 0, 80)
+SPEmpty.Position = UDim2.new(0.5, 0, 0.5, 0)
+SPEmpty.AnchorPoint = Vector2.new(0.5, 0.5)
+SPEmpty.BackgroundTransparency = 1
+SPEmpty.Text = "No hidden buttons yet"
+SPEmpty.TextColor3 = Color3.fromRGB(100, 100, 100)   -- Dark gray for visibility
+SPEmpty.Font = Enum.Font.Gotham
+SPEmpty.TextSize = 13
+SPEmpty.TextWrapped = true
+SPEmpty.ZIndex = 52
+
+-- Unhide All button
+local SPUnhideAll = Instance.new("TextButton", SidePanel)
+SPUnhideAll.Size = UDim2.new(1, -16, 0, 36)
+SPUnhideAll.Position = UDim2.new(0, 8, 1, -44)
+SPUnhideAll.BackgroundColor3 = Color3.fromRGB(34, 139, 34)
+SPUnhideAll.Text = "Unhide All"
+SPUnhideAll.TextColor3 = Color3.new(1, 1, 1)
+SPUnhideAll.Font = Enum.Font.GothamBold
+SPUnhideAll.TextSize = 13
+SPUnhideAll.ZIndex = 52
+Instance.new("UICorner", SPUnhideAll).CornerRadius = UDim.new(0, 8)
+
+-- Rebuild List Function
+local function RebuildSPList()
+    for _, child in ipairs(SPScroll:GetChildren()) do
+        if child:IsA("Frame") then child:Destroy() end
+    end
+
+    local hiddenList = {}
+    for name in pairs(HiddenButtons) do table.insert(hiddenList, name) end
+    table.sort(hiddenList)
+
+    SPEmpty.Visible = #hiddenList == 0
+
+    for _, name in ipairs(hiddenList) do
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, 0, 0, 42)
+        row.BackgroundColor3 = Color3.fromRGB(250, 245, 255)
+        row.BorderSizePixel = 0
+        row.ZIndex = 52
+        row.Parent = SPScroll
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+        local label = Instance.new("TextLabel", row)
+        label.Size = UDim2.new(1, -80, 1, 0)
+        label.Position = UDim2.new(0, 12, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = name:gsub("_Btn", ""):gsub("_", " ")
+        label.TextColor3 = Color3.fromRGB(80, 40, 120)   -- Dark purple - visible on light bg
+        label.Font = Enum.Font.GothamSemibold
+        label.TextSize = 12.5
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.ZIndex = 53
+
+        local unhideBtn = Instance.new("TextButton", row)
+        unhideBtn.Size = UDim2.new(0, 65, 0, 28)
+        unhideBtn.Position = UDim2.new(1, -73, 0.5, -14)
+        unhideBtn.BackgroundColor3 = MASTER_VIOLET
+        unhideBtn.Text = "Unhide"
+        unhideBtn.TextColor3 = Color3.new(1, 1, 1)
+        unhideBtn.Font = Enum.Font.GothamBold
+        unhideBtn.TextSize = 11
+        unhideBtn.ZIndex = 53
+        Instance.new("UICorner", unhideBtn).CornerRadius = UDim.new(0, 6)
+
+        unhideBtn.MouseButton1Click:Connect(function()
+            HiddenButtons[name] = nil
+            for _, b in ipairs(CreatedButtons) do
+                if b.Name == name then b.Visible = true; break end
+            end
+            SaveConfig()
+            RebuildSPList()
+            WindUI:Notify({Title = "Unhide", Content = name:gsub("_Btn","") .. " restored", Duration = 2})
+        end)
+    end
+
+    -- Force update canvas size
+    task.spawn(function()
+        task.wait()
+        SPScroll.CanvasSize = UDim2.new(0, 0, 0, SPLayout.AbsoluteContentSize.Y + 20)
+    end)
+end
+
+-- Open / Close
+local function OpenSidePanel()
+    SP_OPEN = true
+    SidePanel.Visible = true
+    RebuildSPList()
+end
+
+local function CloseSidePanel()
+    SP_OPEN = false
+    SidePanel.Visible = false
+end
+
+ToggleTab.MouseButton1Click:Connect(function()
+    if SP_OPEN then CloseSidePanel() else OpenSidePanel() end
+end)
+
+CollapseTab.MouseButton1Click:Connect(CloseSidePanel)
+
+SPUnhideAll.MouseButton1Click:Connect(function()
+    local count = 0
+    for name in pairs(HiddenButtons) do
+        HiddenButtons[name] = nil
+        for _, b in ipairs(CreatedButtons) do
+            if b.Name == name then b.Visible = true; break end
+        end
+        count += 1
+    end
+    SaveConfig()
+    RebuildSPList()
+    WindUI:Notify({Title = "Unhide All", Content = count .. " button(s) restored", Duration = 2})
+end)
+
+-- Position updater
+RunService.RenderStepped:Connect(function()
+    local macVisible = EditMode and SelectedButton ~= nil
+    ToggleTab.Visible = macVisible
+
+    if not macVisible then
+        CloseSidePanel()
+        return
+    end
+
+    local mPos = MainFrame.AbsolutePosition
+    local mSize = MainFrame.AbsoluteSize
+
+    ToggleTab.Position = UDim2.fromOffset(mPos.X + mSize.X, mPos.Y + (mSize.Y / 2) - 24)
+
+    if SP_OPEN then
+        SidePanel.Position = UDim2.fromOffset(mPos.X + mSize.X + 24, mPos.Y)
+    end
+
+    local hiddenCount = 0
+    for _ in pairs(HiddenButtons) do hiddenCount += 1 end
+    SPUnhideAll.Text = hiddenCount == 0 and "Nothing Hidden" or "Unhide All ("..hiddenCount..")"
+    SPUnhideAll.BackgroundColor3 = hiddenCount == 0 and Color3.fromRGB(160,160,160) or Color3.fromRGB(34,139,34)
+end)
+
+-- ==================== END SIDE PANEL ====================
 
 end -- [scope]
 do -- [scope]

@@ -4240,6 +4240,162 @@ Tabs.ESP:Button({
 CreateAutoNotifyToggle("Auto Notify Murderer", "Knife", "Murderer")
 CreateAutoNotifyToggle("Auto Notify Sheriff", "Gun", "Sheriff")
 
+-- ==================== AUTO GUN + GUN AVAILABLE NOTIFICATION (ESP TAB) ====================
+
+Tabs.ESP:Section({
+    ["Title"] = "Auto Gun",
+    ["Icon"] = "crosshair"
+})
+
+-- Helper: does local player already have a gun?
+local function LocalHasGun()
+    local char = LocalPlayer.Character
+    local bp   = LocalPlayer:FindFirstChild("Backpack")
+    if not char or not bp then return false end
+    return (char:FindFirstChild("Gun") ~= nil) or (bp:FindFirstChild("Gun") ~= nil)
+end
+
+-- Helper: grab the nearest GunDrop via firetouchinterest
+local function TryGrabGunDrop()
+    local character = LocalPlayer.Character
+    if not character then return false end
+    if LocalHasGun() then return false end  -- already have gun, skip
+
+    local touchPart = character:FindFirstChild("LeftFoot")
+        or character:FindFirstChild("Left Leg")
+        or character:FindFirstChild("HumanoidRootPart")
+    if not touchPart then return false end
+
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v.Name == "GunDrop" and v:IsA("BasePart") then
+            firetouchinterest(touchPart, v, 0)
+            task.wait()
+            firetouchinterest(touchPart, v, 1)
+            return true
+        end
+    end
+    return false
+end
+
+-- State
+local AutoGunEnabled        = false
+local GunAvailableNotifEnabled = false
+local AutoGunConnection     = nil
+local GunAvailableLastNotif = 0  -- debounce timestamp
+
+-- Auto Gun: listens for any GunDrop appearing in workspace and instantly grabs it
+local function StartAutoGun()
+    -- Also try immediately in case gun already exists
+    if TryGrabGunDrop() then
+        SendNexoraNotification("Auto Gun", "Gun acquired automatically!", 4, "rbxassetid://89804924525665")
+        return
+    end
+
+    AutoGunConnection = Workspace.DescendantAdded:Connect(function(d)
+        if not AutoGunEnabled then return end
+        if d.Name ~= "GunDrop" or not d:IsA("BasePart") then return end
+        if LocalHasGun() then return end  -- already holding one
+
+        task.wait(0.05)  -- tiny wait for the part to settle in workspace
+
+        local character = LocalPlayer.Character
+        if not character then return end
+
+        local touchPart = character:FindFirstChild("LeftFoot")
+            or character:FindFirstChild("Left Leg")
+            or character:FindFirstChild("HumanoidRootPart")
+        if not touchPart then return end
+
+        firetouchinterest(touchPart, d, 0)
+        task.wait()
+        firetouchinterest(touchPart, d, 1)
+
+        SendNexoraNotification("Auto Gun", "Gun acquired automatically!", 4, "rbxassetid://89804924525665")
+    end)
+end
+
+local function StopAutoGun()
+    if AutoGunConnection then
+        AutoGunConnection:Disconnect()
+        AutoGunConnection = nil
+    end
+end
+
+Tabs.ESP:Toggle({
+    ["Title"] = "Auto Get Gun (grabs when spawned)",
+    ["Value"] = false,
+    ["Callback"] = function(State)
+        AutoGunEnabled = State
+        if State then
+            StartAutoGun()
+            WindUI:Notify({Title = "Auto Gun", Content = "Enabled — will grab gun when it drops", Icon = "check"})
+        else
+            StopAutoGun()
+            WindUI:Notify({Title = "Auto Gun", Content = "Disabled", Icon = "x"})
+        end
+    end
+})
+
+-- Reset auto gun connection on respawn so it keeps working across rounds
+LocalPlayer.CharacterAdded:Connect(function()
+    if AutoGunEnabled then
+        StopAutoGun()
+        task.wait(0.5)
+        StartAutoGun()
+    end
+end)
+
+-- Gun Available Notification: fires Nexora notif when a GunDrop appears (debounced 10s)
+local GunNotifConnection = nil
+
+local function StartGunAvailableNotif()
+    -- Check if one is already present
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v.Name == "GunDrop" and v:IsA("BasePart") then
+            local now = os.clock()
+            if now - GunAvailableLastNotif > 10 then
+                GunAvailableLastNotif = now
+                SendNexoraNotification("Gun Available!", "A gun has dropped — go get it!", 5, "rbxassetid://89804924525665")
+            end
+            break
+        end
+    end
+
+    GunNotifConnection = Workspace.DescendantAdded:Connect(function(d)
+        if not GunAvailableNotifEnabled then return end
+        if d.Name ~= "GunDrop" or not d:IsA("BasePart") then return end
+        local now = os.clock()
+        if now - GunAvailableLastNotif > 10 then
+            GunAvailableLastNotif = now
+            SendNexoraNotification("Gun Available!", "A gun has dropped — go get it!", 5, "rbxassetid://89804924525665")
+        end
+    end)
+end
+
+local function StopGunAvailableNotif()
+    if GunNotifConnection then
+        GunNotifConnection:Disconnect()
+        GunNotifConnection = nil
+    end
+end
+
+Tabs.ESP:Toggle({
+    ["Title"] = "Notify When Gun Available",
+    ["Value"] = false,
+    ["Callback"] = function(State)
+        GunAvailableNotifEnabled = State
+        if State then
+            StartGunAvailableNotif()
+            WindUI:Notify({Title = "Gun Notifier", Content = "You'll be notified when a gun drops", Icon = "bell"})
+        else
+            StopGunAvailableNotif()
+            WindUI:Notify({Title = "Gun Notifier", Content = "Disabled", Icon = "bell-off"})
+        end
+    end
+})
+
+-- ==================== END AUTO GUN ====================
+
 Tabs.ESP:Section({
     ["Title"] = "Spectate",
     ["Icon"] = "eye"
@@ -5471,7 +5627,7 @@ Info:Section({
 
 Info:Paragraph({
     ["Title"] = "Added Features",
-    ["Desc"] = "• Quick Buttons For PC",
+    ["Desc"] = "• Quick Buttons For PC\n• Auto Get Gun\n• Remove unnecessary buttons, unhide\n• Disable auto unequip after shoot",
     ["Image"] = "rbxassetid://89804924525665",
     ["ImageSize"] = 30
 })

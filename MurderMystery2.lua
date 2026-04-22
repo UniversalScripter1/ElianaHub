@@ -1027,7 +1027,7 @@ do
 end
 
 -- God Mode Button
-createShape("GodMode_Btn", UDim2.new(0.6, 0, 0.7, 0), "GOD MODE", function() 
+createShape("GodMode_Btn", UDim2.new(0.6, 0, 0.7, 0), "Adapt", function() 
     loadstring(game:HttpGet("https://pastefy.app/FHl36Zg1/raw"))("true") 
 end)
 

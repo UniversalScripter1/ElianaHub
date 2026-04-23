@@ -1954,6 +1954,107 @@ Tabs.Main:Section({
     ["Icon"] = "player"
 })
 
+
+local TimerEnabled = false
+local TimerGui = nil
+
+Tabs.Main:Toggle({
+    ["Title"] = "Show Top Timer",
+    ["Desc"] = "Displays round timer on top screen",
+    ["Value"] = false,
+    ["Callback"] = function(state)
+        TimerEnabled = state
+
+        if TimerEnabled then
+            -- CREATE TIMER
+            local player = game.Players.LocalPlayer
+            local playerGui = player:WaitForChild("PlayerGui")
+
+            -- Prevent duplicates
+            if playerGui:FindFirstChild("AutoTimerGui") then
+                TimerGui = playerGui.AutoTimerGui
+                TimerGui.Enabled = true
+                return
+            end
+
+            local screenGui = Instance.new("ScreenGui")
+            screenGui.Name = "AutoTimerGui"
+            screenGui.ResetOnSpawn = false
+            screenGui.Parent = playerGui
+            TimerGui = screenGui
+
+            local label = Instance.new("TextLabel")
+            label.Parent = screenGui
+            label.AnchorPoint = Vector2.new(0.5, 0)
+            label.Position = UDim2.new(0.5, 0, 0.08, 0)
+            label.Size = UDim2.new(0, 140, 0, 40)
+
+            label.BackgroundTransparency = 1
+            label.TextScaled = true
+            label.Font = Enum.Font.GothamBlack
+            label.Text = "0:00"
+
+            label.TextColor3 = Color3.fromRGB(180,120,255)
+            label.TextStrokeTransparency = 0.4
+            label.TextStrokeColor3 = Color3.fromRGB(40,0,70)
+
+            -- 🔍 Find timer object
+            local function findTimer()
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj:GetAttribute("Time") ~= nil then
+                        return obj
+                    end
+                end
+            end
+
+            local target = findTimer()
+
+            if not target then
+                workspace.DescendantAdded:Connect(function(obj)
+                    if not target and obj:GetAttribute("Time") ~= nil then
+                        target = obj
+                    end
+                end)
+
+                repeat task.wait() until target
+            end
+
+            -- 🔄 Update
+            local function update()
+                if not TimerEnabled then return end
+                if not target then return end
+
+                local time = target:GetAttribute("Time") or -1
+
+                if time > 0 then
+                    label.Visible = true
+                    local m = math.floor(time / 60)
+                    local s = time % 60
+                    label.Text = string.format("%d:%02d", m, s)
+
+                    if time <= 10 then
+                        label.TextColor3 = Color3.fromRGB(255,80,80)
+                    else
+                        label.TextColor3 = Color3.fromRGB(180,120,255)
+                    end
+                else
+                    label.Visible = false
+                end
+            end
+
+            update()
+            target:GetAttributeChangedSignal("Time"):Connect(update)
+
+        else
+            -- REMOVE TIMER
+            if TimerGui then
+                TimerGui:Destroy()
+                TimerGui = nil
+            end
+        end
+    end
+})
+
 -- Assuming 'Tabs.Main' is your target tab
 local FOVSection = Tabs.Main:Section({ 
     ["Title"] = "Field of View",

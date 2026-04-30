@@ -5810,7 +5810,7 @@ Info:Section({
 
 Info:Paragraph({
     ["Title"] = "Added Features",
-    ["Desc"] = "• Quick Buttons For PC\n• Auto Get Gun\n• Remove unnecessary buttons, unhide\n• Disable auto unequip after shoot\n•Round Timer",
+    ["Desc"] = "• Quick Buttons For PC\n• Auto Get Gun\n• Remove unnecessary buttons, unhide\n• Disable auto unequip after shoot\n• Round Timer\n• Silent Throw (main)",
     ["Image"] = "rbxassetid://89804924525665",
     ["ImageSize"] = 30
 })

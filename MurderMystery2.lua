@@ -1954,7 +1954,89 @@ Tabs.Main:Section({
     ["Icon"] = "player"
 })
 
+-- ==================== SILENT AIM INTEGRATION ====================
+local SilentSettings = {
+    Enabled = false, -- Default to false for the toggle
+    TargetPart = "HumanoidRootPart",
+    Prediction = 0.165
+}
 
+local CurrentTargetPos = nil
+
+-- Separate loop for targeting (Optimized)
+task.spawn(function()
+    while task.wait(0.1) do
+        if SilentSettings.Enabled then
+            local target = nil
+            local dist = math.huge
+            local mousePos = Vector2.new(LocalPlayer:GetMouse().X, LocalPlayer:GetMouse().Y)
+            
+            for _, v in pairs(Players:GetPlayers()) do
+                if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild(SilentSettings.TargetPart) then
+                    local root = v.Character[SilentSettings.TargetPart]
+                    local screenPos, onScreen = Camera:WorldToViewportPoint(root.Position)
+                    
+                    if onScreen then
+                        local mag = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                        if mag < dist then
+                            target = root
+                            dist = mag
+                        end
+                    end
+                end
+            end
+            
+            if target then
+                CurrentTargetPos = target.Position + (target.Velocity * SilentSettings.Prediction)
+            else
+                CurrentTargetPos = nil
+            end
+        end
+    end
+end)
+
+-- The Hook for Knife Throws
+local mt = getrawmetatable(game)
+local oldNamecall = mt.__namecall
+setreadonly(mt, false)
+
+mt.__namecall = newcclosure(function(self, ...)
+    local method = getnamecallmethod()
+    local args = {...}
+    
+    if method == "FireServer" and tostring(self) == "KnifeThrown" then
+        if SilentSettings.Enabled and CurrentTargetPos and args[1] and typeof(args[1]) == "CFrame" then
+            args[1] = CFrame.new(CurrentTargetPos) * args[1].Rotation
+            return oldNamecall(self, unpack(args))
+        end
+    end
+    
+    return oldNamecall(self, ...)
+end)
+
+setreadonly(mt, true)
+
+-- ==================== UI ADDITION (Murderer Section) ====================
+Tabs.Main:Section({
+    ["Title"] = "Murderer Special",
+    ["Icon"] = "skull"
+})
+
+Tabs.Main:Toggle({
+    ["Title"] = "Silent Aim (Knife)",
+    ["Desc"] = "Redirects thrown knives to the target closest to your cursor",
+    ["Value"] = false,
+    ["Callback"] = function(state)
+        SilentSettings.Enabled = state
+        WindUI:Notify({
+            ["Title"] = "Silent Aim",
+            ["Content"] = state and "Activated" or "Deactivated",
+            ["Duration"] = 2,
+            ["Icon"] = state and "target" or "shield-off"
+        })
+    end
+})
+    
 local TimerEnabled = false
 local TimerGui = nil
 

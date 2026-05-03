@@ -242,37 +242,37 @@ local Tabs = {}
 
 Tabs.Main = MainWindow:Tab({
     ["Title"] = "Main",
-    ["Icon"] = "eye",
+    ["Icon"] = "solar:home-2-bold",
     ["Desc"] = "Eliana Hub"
 })
 
 Tabs.Misc = MainWindow:Tab({
     ["Title"] = "Misc",
-    ["Icon"] = "sparkles",
+    ["Icon"] = "solar:widget-add-bold",
     ["Desc"] = "Eliana Hub"
 })
 
 Tabs.ESP = MainWindow:Tab({
     ["Title"] = "ESP",
-    ["Icon"] = "eye",
+    ["Icon"] = "solar:magic-stick-3-bold",
     ["Desc"] = "Eliana Hub"
 })
 
-Tabs.Farm = MainWindow:Tab({
-    ["Title"] = "Farm",
-    ["Icon"] = "wrench",
+Tabs.Economy = MainWindow:Tab({
+    ["Title"] = "Economy",
+    ["Icon"] = "solar:wad-of-money-bold",
     ["Desc"] = "Eliana Hub"
 })
 
 Tabs.Place = MainWindow:Tab({
     ["Title"] = "Teleport",
-    ["Icon"] = "map",
+    ["Icon"] = "solar:map-bold",
     ["Desc"] = "Eliana Hub"
 })
 
 Tabs.Fling = MainWindow:Tab({
     ["Title"] = "Fling",
-    ["Icon"] = "user",
+    ["Icon"] = "solar:user-bold",
     ["Desc"] = "Eliana Hub"
 })
 
@@ -4657,16 +4657,36 @@ Tabs.ESP:Button({
 
 end -- [scope]
 do -- [scope]
---- ===========FARM TAB===========================
-
-Tabs.Farm:Section({
-    ["Title"] = "Coin Farm",
+--- ===========Economy TAB===========================
+Tabs.Economy:Section({
+    ["Title"] = "Coin Economy",
     ["Icon"] = "package"
 })
 
-local CoinFarmEnabled = false
+Tabs.Economy:Button({
+    ["Title"] = "Trade Checker Value Grabber",
+    ["Locked"] = false,
+    ["Desc"] = "a tool to grab the value of the checker for trading purposes",
+    ["Notification"] = {
+        ["Title"] = "Checker Value Grabber",
+        ["Content"] = "Script executed! Trade someone to see the checker value.",
+        ["Duration"] = 3,
+        ["Icon"] = "check"
+    },
+    ["Callback"] = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/UniversalScripter1/ProjectNexora/refs/heads/main/CheckerValue.lua"))()
+    end
+})
+
+
+Tabs.Economy:Section({
+    ["Title"] = "Coin Economy",
+    ["Icon"] = "package"
+})
+
+local CoinEconomyEnabled = false
 local TeleportWalkEnabled = false
-local CoinFarmMode = "Nearest"
+local CoinEconomyMode = "Nearest"
 local TeleportInterval = 3
 local WalkCoinRadius = 15
 local LastTeleportTime = 0
@@ -4686,7 +4706,7 @@ local function FindTargetCoin(RootPart)
             CoinPart = Child.PrimaryPart
         end
         if CoinPart and (CoinPart.Parent and CoinPart ~= LastTeleportedCoin) then
-            if CoinFarmMode ~= "Nearest" then
+            if CoinEconomyMode ~= "Nearest" then
                 table.insert(AllCoins, CoinPart)
             else
                 local Distance = (RootPart.Position - CoinPart.Position).Magnitude
@@ -4697,7 +4717,7 @@ local function FindTargetCoin(RootPart)
             end
         end
     end
-    if CoinFarmMode == "Nearest" then
+    if CoinEconomyMode == "Nearest" then
         return NearestCoin
     end
     if #AllCoins > 0 then
@@ -4732,7 +4752,7 @@ RunService.Heartbeat:Connect(function()
     if not (CoinContainer and CoinContainer.Parent) then
         CoinContainer = Workspace:FindFirstChild("CoinContainer", true)
     end
-    if CoinFarmEnabled and (LocalPlayer and CoinContainer) then
+    if CoinEconomyEnabled and (LocalPlayer and CoinContainer) then
         local Character = LocalPlayer.Character
         if Character then
             local Humanoid = Character:FindFirstChildOfClass("Humanoid")
@@ -4774,11 +4794,11 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
-Tabs.Farm:Toggle({
-    ["Title"] = "Auto Farm Coin",
+Tabs.Economy:Toggle({
+    ["Title"] = "Auto Economy Coin",
     ["Value"] = false,
     ["Callback"] = function(State)
-        CoinFarmEnabled = State
+        CoinEconomyEnabled = State
         if not State then
             LastTeleportedCoin = nil
             CurrentWalkTarget = nil
@@ -4786,7 +4806,7 @@ Tabs.Farm:Toggle({
     end
 })
 
-Tabs.Farm:Toggle({
+Tabs.Economy:Toggle({
     ["Title"] = "Teleport + Walk",
     ["Value"] = false,
     ["Callback"] = function(State)
@@ -4794,17 +4814,17 @@ Tabs.Farm:Toggle({
     end
 })
 
-Tabs.Farm:Dropdown({
-    ["Title"] = "Coin Farm Mode",
+Tabs.Economy:Dropdown({
+    ["Title"] = "Coin Economy Mode",
     ["Desc"] = "Ana hedef coin'i nasıl seçeğini belirle",
     ["Values"] = { "Nearest", "Random" },
     ["Value"] = "Nearest",
     ["Callback"] = function(Value)
-        CoinFarmMode = Value
+        CoinEconomyMode = Value
     end
 })
 
-Tabs.Farm:Slider({
+Tabs.Economy:Slider({
     ["Title"] = "Teleport Interval",
     ["step"] = 1,
     ["Value"] = {
@@ -4821,7 +4841,7 @@ local SpinEnabled = false
 local SpinSpeed = 5
 local SpinConnection = nil
 
-Tabs.Farm:Toggle({
+Tabs.Economy:Toggle({
     ["Title"] = "Spin (spin for getting coins easily)",
     ["Value"] = false,
     ["Callback"] = function(State)
@@ -4845,7 +4865,7 @@ Tabs.Farm:Toggle({
 
 local AntiAFKConnection = nil
 
-Tabs.Farm:Toggle({
+Tabs.Economy:Toggle({
     ["Title"] = "Anti-AFK",
     ["Value"] = false,
     ["Callback"] = function(State)
@@ -4862,10 +4882,10 @@ Tabs.Farm:Toggle({
     end
 })
 
-Tabs.Farm:Button({
+Tabs.Economy:Button({
     ["Title"] = "Nexora Floating GUI",
     ["Callback"] = function()
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/UniversalScripter1/ProjectNexora/refs/heads/main/MM2AUTOFARMMAINsource"))()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/UniversalScripter1/ProjectNexora/refs/heads/main/MM2AUTOEconomyMAINsource"))()
     end
 })
 
@@ -5810,7 +5830,7 @@ Info:Section({
 
 Info:Paragraph({
     ["Title"] = "Added Features",
-    ["Desc"] = "• Quick Buttons For PC\n• Auto Get Gun\n• Remove unnecessary buttons, unhide\n• Disable auto unequip after shoot\n• Round Timer\n• Silent Throw (main)",
+    ["Desc"] = "• Added Quick Buttons For PC\n•Added Auto Get Gun\n• Remove unnecessary buttons, unhide\n• Disable auto unequip after shoot\n• Round Timer\n• Silent Throw (main)\n• Added Trade checker (Economy tab)\n• Changed farm tab into economy tab.",
     ["Image"] = "rbxassetid://89804924525665",
     ["ImageSize"] = 30
 })
